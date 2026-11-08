@@ -13,4 +13,5 @@ First public version.
 - Graphdeco 3D Gaussian Splatting trained in metric ENU; exact similarity transform of Gaussians incl. SH rotation;
   UTM export with false origin; GS orthophoto with world file.
 - WebGL2 satellite viewer (Google Map Tiles API / Esri fallback) with measurement and blink comparison.
+- Authors and affiliations (`AUTHORS.md`, `CITATION.cff`).
 - Installers for portable FFmpeg/COLMAP and the GPU environment; unit tests; methods documentation with references.

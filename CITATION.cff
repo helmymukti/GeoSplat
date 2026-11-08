@@ -7,7 +7,16 @@ license: MIT
 authors:
   - family-names: Wijaya
     given-names: Helmy Mukti
-    affiliation: "Department of Geomatics Engineering, Institut Teknologi Sepuluh Nopember (ITS), Surabaya"
+    affiliation: "Department of Geomatics Engineering, Institut Teknologi Sepuluh Nopember (ITS), Surabaya, Indonesia"
+    email: helmy.mukti.wijaya@gmail.com
+  - family-names: Handayani
+    given-names: Hepi Hapsari
+    affiliation: "Department of Geomatics Engineering, Institut Teknologi Sepuluh Nopember (ITS), Surabaya, Indonesia"
+  - family-names: Hariyanto
+    given-names: Teguh
+    affiliation: "Department of Geomatics Engineering, Institut Teknologi Sepuluh Nopember (ITS), Surabaya, Indonesia"
+  - name: Harintaka
+    affiliation: "Department of Geomatics Engineering, Universitas Gadjah Mada (UGM), Yogyakarta, Indonesia"
 keywords: [UAV, photogrammetry, videogrammetry, "3D Gaussian Splatting", georeferencing, GNSS, COLMAP, DJI]
 references:
   - type: article

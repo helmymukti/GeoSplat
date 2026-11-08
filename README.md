@@ -87,6 +87,13 @@ tests/                  unit tests (pytest)
 .github/                CI (unit tests on Windows + Linux), issue / PR templates
 ```
 
+## Authors
+**Helmy Mukti Wijaya**<sup>1,*</sup>, **Hepi Hapsari Handayani**<sup>1</sup>, **Teguh Hariyanto**<sup>1</sup>, and **Harintaka**<sup>2</sup>
+
+<sup>1</sup> Department of Geomatics Engineering, Institut Teknologi Sepuluh Nopember (ITS), Surabaya, Indonesia
+<sup>2</sup> Department of Geomatics Engineering, Universitas Gadjah Mada (UGM), Yogyakarta, Indonesia
+<sup>*</sup> Corresponding author: helmy.mukti.wijaya@gmail.com
+
 ## How to cite
 If you use GeoSplat, please cite this repository (see `CITATION.cff`) **and the methods it builds on**. At minimum: Kerbl et al. 2023 (3D Gaussian Splatting), Schönberger & Frahm 2016 (COLMAP), and Umeyama 1991 (similarity estimation). The full list is in [docs/METHODS.md](docs/METHODS.md#references).
 
