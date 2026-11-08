@@ -1,0 +1,57 @@
+cff-version: 1.2.0
+message: "If you use GeoSplat, please cite it as below, together with the methods it builds on (docs/METHODS.md)."
+title: "GeoSplat: local DJI video to georeferenced 3D Gaussian Splatting"
+version: 0.1.0
+date-released: 2026-11-09
+license: MIT
+authors:
+  - family-names: Wijaya
+    given-names: Helmy Mukti
+    affiliation: "Department of Geomatics Engineering, Institut Teknologi Sepuluh Nopember (ITS), Surabaya"
+keywords: [UAV, photogrammetry, videogrammetry, "3D Gaussian Splatting", georeferencing, GNSS, COLMAP, DJI]
+references:
+  - type: article
+    title: "3D Gaussian Splatting for Real-Time Radiance Field Rendering"
+    authors: [{family-names: Kerbl, given-names: Bernhard}, {family-names: Kopanas, given-names: Georgios},
+              {family-names: Leimkühler, given-names: Thomas}, {family-names: Drettakis, given-names: George}]
+    journal: "ACM Transactions on Graphics"
+    volume: 42
+    issue: 4
+    year: 2023
+  - type: conference-paper
+    title: "Structure-from-Motion Revisited"
+    authors: [{family-names: Schönberger, given-names: Johannes L.}, {family-names: Frahm, given-names: Jan-Michael}]
+    collection-title: "IEEE Conference on Computer Vision and Pattern Recognition (CVPR)"
+    year: 2016
+  - type: conference-paper
+    title: "Pixelwise View Selection for Unstructured Multi-View Stereo"
+    authors: [{family-names: Schönberger, given-names: Johannes L.}, {family-names: Zheng, given-names: Enliang},
+              {family-names: Pollefeys, given-names: Marc}, {family-names: Frahm, given-names: Jan-Michael}]
+    collection-title: "European Conference on Computer Vision (ECCV)"
+    year: 2016
+  - type: article
+    title: "Least-squares estimation of transformation parameters between two point patterns"
+    authors: [{family-names: Umeyama, given-names: Shinji}]
+    journal: "IEEE Transactions on Pattern Analysis and Machine Intelligence"
+    volume: 13
+    issue: 4
+    year: 1991
+  - type: article
+    title: "Random sample consensus: a paradigm for model fitting with applications to image analysis and automated cartography"
+    authors: [{family-names: Fischler, given-names: Martin A.}, {family-names: Bolles, given-names: Robert C.}]
+    journal: "Communications of the ACM"
+    volume: 24
+    issue: 6
+    year: 1981
+  - type: article
+    title: "Transverse Mercator with an accuracy of a few nanometers"
+    authors: [{family-names: Karney, given-names: Charles F. F.}]
+    journal: "Journal of Geodesy"
+    volume: 85
+    issue: 8
+    year: 2011
+  - type: software
+    title: "splat (WebGL 3D Gaussian Splat viewer)"
+    authors: [{family-names: Kwok, given-names: Kevin}]
+    url: "https://github.com/antimatter15/splat"
+    license: MIT
