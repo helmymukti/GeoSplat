@@ -1,0 +1,496 @@
+<!DOCTYPE html>
+<!--
+  GeoSplat satellite viewer (WebGL2).
+  Splat rendering: independent implementation of the approach of antimatter15/splat (Kevin Kwok, MIT licence):
+  float data textures, eigen-axis screen quads, 16-bit counting sort by depth in a Web Worker.
+  Projected covariance: EWA splatting (Zwicker et al. 2001) as used in 3D Gaussian Splatting (Kerbl et al. 2023),
+  here with the exact Jacobian of an arbitrary model-view-projection.
+  Imagery: Google Map Tiles API (2D satellite tiles, attribution shown) or Esri World Imagery (fallback).
+  See docs/METHODS.md section 9 and THIRD_PARTY_NOTICES.md.
+-->
+<html lang="id">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>GeoSplat</title>
+<style>
+  :root { --bg:#000; --panel:#262626; --panel2:#2e2e2e; --line:#3a3a3a; --ink:#e6e6e6; --muted:#9a9a9a; --acc:#ff6a13; }
+  * { box-sizing:border-box; }
+  html, body { margin:0; height:100%; overflow:hidden; background:var(--bg); color:var(--ink); font:13px/1.4 "Segoe UI", system-ui, sans-serif; user-select:none; }
+  canvas#view { position:fixed; inset:0; width:100%; height:100%; display:block; cursor:grab; }
+  canvas#view.measuring { cursor:crosshair; }
+  .panel { position:fixed; background:var(--panel); border-radius:10px; box-shadow:0 4px 18px rgba(0,0,0,.45); }
+  #menu { left:16px; top:16px; padding:9px 14px; display:flex; align-items:center; gap:10px; font-weight:600; }
+  #menu .dot { width:10px; height:10px; border-radius:50%; background:var(--acc); }
+  #menu .name { font-weight:400; color:var(--muted); }
+  #scene { left:16px; top:66px; width:280px; overflow:hidden; }
+  .hdr { display:flex; align-items:center; gap:8px; padding:10px 14px; background:var(--panel2); font-weight:600; letter-spacing:.4px; font-size:12px; text-transform:uppercase; cursor:pointer; }
+  .hdr svg { width:14px; height:14px; stroke:var(--acc); }
+  .hdr .chev { margin-left:auto; stroke:var(--muted); transition:transform .15s; } .hdr.closed .chev { transform:rotate(-90deg); }
+  .item { display:flex; align-items:center; gap:8px; padding:8px 14px; border-top:1px solid #303030; }
+  .item .lbl { flex:1; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; } .item .sub { color:var(--muted); font-size:11.5px; }
+  .eye { width:22px; height:22px; border:0; background:none; cursor:pointer; padding:0; opacity:.95; }
+  .eye svg { width:18px; height:18px; stroke:var(--ink); } .eye.off svg { stroke:#5c5c5c; }
+  .sw { width:10px; height:10px; border-radius:2px; flex:none; }
+  .kv { display:grid; grid-template-columns:auto 1fr; gap:4px 12px; padding:10px 14px; font-size:12px; border-top:1px solid #303030; }
+  .kv div:nth-child(odd) { color:var(--muted); } .kv div:nth-child(even) { font-family:Consolas, monospace; text-align:right; }
+  input[type=range] { width:100%; accent-color:var(--acc); height:14px; }
+  #toolbar { left:50%; bottom:46px; transform:translateX(-50%); padding:6px; display:flex; gap:4px; }
+  #toolbar button { width:40px; height:40px; border:0; border-radius:7px; background:transparent; cursor:pointer; display:grid; place-items:center; }
+  #toolbar button:hover { background:#383838; } #toolbar button.on { background:var(--acc); }
+  #toolbar button svg { width:20px; height:20px; stroke:var(--ink); fill:none; stroke-width:1.8; }
+  #toolbar .sep { width:1px; background:var(--line); margin:6px 4px; }
+  #measure { left:50%; bottom:104px; transform:translateX(-50%); padding:9px 14px; display:none; gap:12px; align-items:center; }
+  #measure .val { background:#1b1b1b; border-radius:5px; padding:4px 10px; font-family:Consolas, monospace; min-width:110px; text-align:right; }
+  #measure button { background:#3a3a3a; color:var(--ink); border:0; border-radius:5px; padding:4px 10px; cursor:pointer; }
+  #status { position:fixed; left:0; right:0; bottom:0; height:30px; background:#1a1a1a; display:flex; align-items:center; gap:22px; padding:0 16px; font-size:12px; color:var(--muted); }
+  #status b { color:var(--ink); font-weight:500; } #status .r { margin-left:auto; }
+  #compass { right:18px; top:16px; width:54px; height:54px; border-radius:50%; display:grid; place-items:center; cursor:pointer; }
+  #compass svg { width:42px; height:42px; }
+  #toast { position:fixed; left:50%; top:16px; transform:translateX(-50%); background:var(--panel); border-left:3px solid var(--acc); border-radius:8px; padding:9px 14px; max-width:620px; display:none; box-shadow:0 4px 18px rgba(0,0,0,.45); }
+  #toast a { color:var(--acc); }
+  #keyform { display:none; padding:10px 14px; border-top:1px solid #303030; }
+  #keyform input { width:100%; background:#1b1b1b; border:1px solid var(--line); color:var(--ink); border-radius:5px; padding:6px 8px; }
+  #keyform button { margin-top:6px; width:100%; background:var(--acc); color:#111; border:0; border-radius:5px; padding:6px; font-weight:600; cursor:pointer; }
+  #loading { position:fixed; inset:0; display:grid; place-items:center; pointer-events:none; color:var(--muted); }
+</style>
+</head>
+<body>
+<canvas id="view"></canvas>
+<div id="loading">Memuat…</div>
+
+<div class="panel" id="menu"><span class="dot"></span>GeoSplat<span class="name" id="sceneName"></span></div>
+
+<div class="panel" id="scene">
+  <div class="hdr" data-toggle="layers"><svg viewBox="0 0 24 24" fill="none" stroke-width="2"><path d="M4 6h16M4 12h16M4 18h16"/></svg>Scene<svg class="chev" viewBox="0 0 24 24" fill="none" stroke-width="2"><path d="M6 9l6 6 6-6"/></svg></div>
+  <div id="layers">
+    <div class="item"><span class="sw" style="background:#ff6a13"></span><span class="lbl">gaussians_enu.ply<div class="sub" id="nSplat"></div></span><button class="eye" data-layer="splat"></button></div>
+    <div class="item"><span class="sw" style="background:#3f8f4f"></span><span class="lbl">Satelit<div class="sub" id="imgSrc">–</div></span><button class="eye" data-layer="sat"></button></div>
+    <div class="item" style="padding-top:2px"><span class="sw" style="visibility:hidden"></span><span class="lbl sub">Opacity satelit</span><input type="range" id="satOp" min="0" max="100" value="100" style="width:110px"></div>
+    <div class="item"><span class="sw" style="background:#00d5ff"></span><span class="lbl">Kamera SfM (georef)</span><button class="eye" data-layer="cams"></button></div>
+    <div class="item"><span class="sw" style="background:#ffd23f"></span><span class="lbl">Lintasan GNSS DJI</span><button class="eye off" data-layer="gnss"></button></div>
+    <div id="keyform"><div class="sub" style="margin-bottom:6px">Google API key (Map Tiles API)</div><input id="keyIn" type="password" placeholder="AIza..."><button id="keyBtn">Pakai key</button></div>
+  </div>
+  <div class="hdr" data-toggle="geo"><svg viewBox="0 0 24 24" fill="none" stroke-width="2"><circle cx="12" cy="12" r="9"/><path d="M3 12h18M12 3c3 3 3 15 0 18M12 3c-3 3-3 15 0 18"/></svg>Georeferensi<svg class="chev" viewBox="0 0 24 24" fill="none" stroke-width="2"><path d="M6 9l6 6 6-6"/></svg></div>
+  <div id="geo" class="kv"></div>
+</div>
+
+<div class="panel" id="compass" title="Utara ke atas"><svg viewBox="-21 -21 42 42"><g id="needle"><path d="M0,-17 L5,0 L0,-3 L-5,0 Z" fill="#ff6a13"/><path d="M0,17 L5,0 L0,3 L-5,0 Z" fill="#777"/></g></svg></div>
+
+<div class="panel" id="measure"><span>Klik 2 titik untuk mengukur</span><span class="sub">Panjang</span><span class="val" id="mval">–</span><button id="mclear">Clear</button></div>
+
+<div class="panel" id="toolbar">
+  <button id="tReset" title="Reset tampilan"><svg viewBox="0 0 24 24"><path d="M4 4v6h6"/><path d="M20 12a8 8 0 1 1-2.3-5.7L20 9"/></svg></button>
+  <button id="tTop" title="Tampak atas (bandingkan dengan satelit)"><svg viewBox="0 0 24 24"><rect x="4" y="4" width="16" height="16" rx="2"/><circle cx="12" cy="12" r="2.5"/></svg></button>
+  <button id="tOrbit" title="Tampak miring 3D"><svg viewBox="0 0 24 24"><path d="M12 3l8 4.5v9L12 21l-8-4.5v-9z"/><path d="M12 12l8-4.5M12 12v9M12 12L4 7.5"/></svg></button>
+  <span class="sep"></span>
+  <button id="tMeasure" title="Ukur jarak (bidang tanah)"><svg viewBox="0 0 24 24"><path d="M3 17L17 3l4 4L7 21z"/><path d="M7 13l2 2M10 10l2 2M13 7l2 2"/></svg></button>
+  <button id="tBlink" title="Kedip splat on/off"><svg viewBox="0 0 24 24"><path d="M2 12s4-7 10-7 10 7 10 7-4 7-10 7S2 12 2 12z"/><circle cx="12" cy="12" r="3"/></svg></button>
+  <span class="sep"></span>
+  <button id="tShot" title="Simpan screenshot PNG"><svg viewBox="0 0 24 24"><path d="M4 8h3l2-3h6l2 3h3v11H4z"/><circle cx="12" cy="13" r="3.5"/></svg></button>
+</div>
+
+<div id="toast"></div>
+
+<div id="status">
+  <span>Splats <b id="sN">–</b></span>
+  <span>Imagery <b id="sImg">–</b></span>
+  <span>Kursor <b id="sCur">–</b></span>
+  <span class="r" id="sAttr"></span>
+</div>
+
+<script src="config.local.js" onerror="void 0"></script>
+<script>
+"use strict";
+const $ = id => document.getElementById(id);
+const toast = (html, ms=9000) => { const t=$("toast"); t.innerHTML=html; t.style.display="block"; clearTimeout(toast.h); if (ms) toast.h=setTimeout(()=>t.style.display="none", ms); };
+
+// ======================================================================= geodesy (WGS84)
+const WA=6378137, WF=1/298.257223563, WE2=WF*(2-WF), D2R=Math.PI/180;
+function geo2ecef(lat, lon, h){ const p=lat*D2R, l=lon*D2R, s=Math.sin(p), N=WA/Math.sqrt(1-WE2*s*s);
+  return [(N+h)*Math.cos(p)*Math.cos(l), (N+h)*Math.cos(p)*Math.sin(l), (N*(1-WE2)+h)*s]; }
+function makeENU(lat0, lon0, h0){
+  const p=lat0*D2R, l=lon0*D2R, sp=Math.sin(p), cp=Math.cos(p), sl=Math.sin(l), cl=Math.cos(l), o=geo2ecef(lat0,lon0,h0);
+  const E=[-sl, cl, 0], N=[-sp*cl, -sp*sl, cp], U=[cp*cl, cp*sl, sp];
+  return {
+    fwd(lat, lon, h){ const x=geo2ecef(lat,lon,h), d=[x[0]-o[0],x[1]-o[1],x[2]-o[2]];
+      return [E[0]*d[0]+E[1]*d[1]+E[2]*d[2], N[0]*d[0]+N[1]*d[1]+N[2]*d[2], U[0]*d[0]+U[1]*d[1]+U[2]*d[2]]; },
+    inv(e, n, u){ const X=o[0]+E[0]*e+N[0]*n+U[0]*u, Y=o[1]+E[1]*e+N[1]*n+U[1]*u, Z=o[2]+E[2]*e+N[2]*n+U[2]*u;
+      const lon=Math.atan2(Y,X), pr=Math.hypot(X,Y); let lat=Math.atan2(Z, pr*(1-WE2)), h=0;
+      for (let i=0;i<5;i++){ const s=Math.sin(lat), Nn=WA/Math.sqrt(1-WE2*s*s); h=pr/Math.cos(lat)-Nn; lat=Math.atan2(Z, pr*(1-WE2*Nn/(Nn+h))); }
+      return [lat/D2R, lon/D2R, h]; } };
+}
+const nF=WF/(2-WF), K0=0.9996, AA=WA/(1+nF)*(1+nF*nF/4+nF**4/64);
+const AL=[nF/2-2/3*nF**2+5/16*nF**3+41/180*nF**4, 13/48*nF**2-3/5*nF**3+557/1440*nF**4, 61/240*nF**3-103/140*nF**4, 49561/161280*nF**4];
+function toUTM(lat, lon){ const zone=Math.floor((lon+180)/6)+1, lon0=((zone-1)*6-177)*D2R, phi=lat*D2R, lam=lon*D2R-lon0;
+  const c=2*Math.sqrt(nF)/(1+nF), t=Math.sinh(Math.atanh(Math.sin(phi))-c*Math.atanh(c*Math.sin(phi)));
+  const xp=Math.atan2(t,Math.cos(lam)), ep=Math.atanh(Math.sin(lam)/Math.sqrt(1+t*t)); let xi=xp, eta=ep;
+  for (let j=1;j<=4;j++){ xi+=AL[j-1]*Math.sin(2*j*xp)*Math.cosh(2*j*ep); eta+=AL[j-1]*Math.cos(2*j*xp)*Math.sinh(2*j*ep); }
+  return {zone, south:lat<0, E:500000+K0*AA*eta, N:K0*AA*xi+(lat<0?1e7:0)}; }
+
+// ======================================================================= matrices (column-major)
+function perspective(fovy, aspect, near, far){ const f=1/Math.tan(fovy/2), nf=1/(near-far);
+  return [f/aspect,0,0,0, 0,f,0,0, 0,0,(far+near)*nf,-1, 0,0,2*far*near*nf,0]; }
+function lookAt(e, t, up){ const sub=(a,b)=>[a[0]-b[0],a[1]-b[1],a[2]-b[2]], nrm=v=>{const l=Math.hypot(...v);return v.map(x=>x/l)},
+  cr=(a,b)=>[a[1]*b[2]-a[2]*b[1],a[2]*b[0]-a[0]*b[2],a[0]*b[1]-a[1]*b[0]], dt=(a,b)=>a[0]*b[0]+a[1]*b[1]+a[2]*b[2];
+  const z=nrm(sub(e,t)), x=nrm(cr(up,z)), y=cr(z,x);
+  return [x[0],y[0],z[0],0, x[1],y[1],z[1],0, x[2],y[2],z[2],0, -dt(x,e),-dt(y,e),-dt(z,e),1]; }
+function mul(a,b){ const o=new Array(16).fill(0); for(let c=0;c<4;c++) for(let r=0;r<4;r++) for(let k=0;k<4;k++) o[c*4+r]+=a[k*4+r]*b[c*4+k]; return o; }
+
+// ======================================================================= Gaussian splat renderer (tested)
+const VS = `#version 300 es
+precision highp float; precision highp int;
+uniform mat4 u_mvp; uniform vec2 u_vp; uniform float u_size;
+uniform sampler2D t_pos; uniform sampler2D t_c1; uniform sampler2D t_c2; uniform sampler2D t_col; uniform int u_w;
+in uint a_index;
+out vec4 v_col; out vec2 v_pos;
+void main(){
+  ivec2 uv = ivec2(int(a_index) % u_w, int(a_index) / u_w);
+  vec3 c = texelFetch(t_pos, uv, 0).xyz; vec4 s1 = texelFetch(t_c1, uv, 0); vec2 s2 = texelFetch(t_c2, uv, 0).xy;
+  vec4 col = texelFetch(t_col, uv, 0);
+  vec4 clip = u_mvp * vec4(c, 1.0);
+  float w = clip.w;
+  if (w <= 1e-6 || abs(clip.x) > 1.3*w || abs(clip.y) > 1.3*w) { gl_Position = vec4(0.0, 0.0, 2.0, 1.0); return; }
+  mat3 Sg = mat3(s1.x, s1.y, s1.z,  s1.y, s1.w, s2.x,  s1.z, s2.x, s2.y) * (u_size*u_size);
+  vec3 r0 = vec3(u_mvp[0][0], u_mvp[1][0], u_mvp[2][0]);
+  vec3 r1 = vec3(u_mvp[0][1], u_mvp[1][1], u_mvp[2][1]);
+  vec3 r3 = vec3(u_mvp[0][3], u_mvp[1][3], u_mvp[2][3]);
+  vec3 j0 = (r0*w - clip.x*r3) / (w*w) * (0.5*u_vp.x);
+  vec3 j1 = (r1*w - clip.y*r3) / (w*w) * (0.5*u_vp.y);
+  float a = dot(j0, Sg*j0) + 0.3, b = dot(j0, Sg*j1), d = dot(j1, Sg*j1) + 0.3;
+  float mid = 0.5*(a+d), rad = length(vec2(0.5*(a-d), b));
+  float l1 = mid + rad, l2 = max(mid - rad, 0.1);
+  vec2 v1 = abs(b) > 1e-9 ? normalize(vec2(b, l1 - a)) : (a >= d ? vec2(1.0, 0.0) : vec2(0.0, 1.0));
+  vec2 major = min(sqrt(2.0*l1), 1024.0) * v1;
+  vec2 minor = min(sqrt(2.0*l2), 1024.0) * vec2(v1.y, -v1.x);
+  vec2 corner = vec2(float(gl_VertexID & 1), float((gl_VertexID >> 1) & 1)) * 4.0 - 2.0;
+  v_pos = corner; v_col = col;
+  vec2 ndc = clip.xy / w + (corner.x*major + corner.y*minor) / (0.5*u_vp);
+  gl_Position = vec4(ndc, 0.0, 1.0);
+}`;
+const FS = `#version 300 es
+precision highp float;
+in vec4 v_col; in vec2 v_pos; out vec4 frag;
+void main(){
+  float A = -dot(v_pos, v_pos);
+  if (A < -4.0) discard;
+  float alpha = exp(A) * v_col.a;
+  if (alpha < 1.0/255.0) discard;
+  frag = vec4(v_col.rgb, alpha);
+}`;
+// sorting worker: depth = clip.w (row 3 of MVP), far -> near, 16-bit counting sort
+const WORKER = `
+let pos=null, n=0, busy=false, pending=null;
+onmessage = (e) => {
+  if (e.data.pos) { pos = new Float32Array(e.data.pos); n = pos.length/3; return; }
+  pending = e.data; if (!busy) run();
+};
+function run(){
+  if (!pending || !pos) return; busy = true; const {row, count, id} = pending; pending = null;
+  const m = Math.min(count, n), depth = new Float32Array(m); let lo=Infinity, hi=-Infinity;
+  for (let i=0;i<m;i++){ const d = row[0]*pos[3*i]+row[1]*pos[3*i+1]+row[2]*pos[3*i+2]+row[3]; depth[i]=d; if(d<lo)lo=d; if(d>hi)hi=d; }
+  const B=65536, cnt=new Uint32Array(B), key=new Uint16Array(m), sc=(B-1)/Math.max(hi-lo,1e-9);
+  for (let i=0;i<m;i++){ const k=(B-1)-Math.floor((depth[i]-lo)*sc); key[i]=k; cnt[k]++; }   // far first
+  for (let i=1;i<B;i++) cnt[i]+=cnt[i-1];
+  const out=new Uint32Array(m); for (let i=m-1;i>=0;i--) out[--cnt[key[i]]]=i;
+  postMessage({idx: out.buffer, id}, [out.buffer]); busy=false; if (pending) run();
+}`;
+
+class SplatRenderer {
+  constructor(){ this.gl=null; this.ready=false; this.count=0; this.sortId=0; this.lastRow=null; this.onSorted=null; }
+  init(gl, buffer){
+    this.gl = gl;
+    if (!(gl instanceof WebGL2RenderingContext)) throw new Error("WebGL2 tidak tersedia pada konteks ini");
+    const sh = (t, s) => { const o=gl.createShader(t); gl.shaderSource(o,s); gl.compileShader(o);
+      if(!gl.getShaderParameter(o,gl.COMPILE_STATUS)) throw new Error(gl.getShaderInfoLog(o)); return o; };
+    const p = gl.createProgram(); gl.attachShader(p, sh(gl.VERTEX_SHADER, VS)); gl.attachShader(p, sh(gl.FRAGMENT_SHADER, FS));
+    gl.linkProgram(p); if(!gl.getProgramParameter(p, gl.LINK_STATUS)) throw new Error(gl.getProgramInfoLog(p));
+    this.prog = p; this.loc = {}; for (const u of ["u_mvp","u_vp","u_size","t_pos","t_c1","t_c2","t_col","u_w"]) this.loc[u]=gl.getUniformLocation(p,u);
+    // unpack .splat -> textures
+    const n = buffer.byteLength/32, f = new Float32Array(buffer), u8 = new Uint8Array(buffer);
+    const W = 2048, H = Math.ceil(n/W);
+    const tp = new Float32Array(W*H*4), t1 = new Float32Array(W*H*4), t2 = new Float32Array(W*H*4), tc = new Uint8Array(W*H*4);
+    const posOnly = new Float32Array(n*3);
+    for (let i=0;i<n;i++){
+      const px=f[8*i], py=f[8*i+1], pz=f[8*i+2], sx=f[8*i+3], sy=f[8*i+4], sz=f[8*i+5];
+      tp[4*i]=px; tp[4*i+1]=py; tp[4*i+2]=pz; posOnly[3*i]=px; posOnly[3*i+1]=py; posOnly[3*i+2]=pz;
+      for (let k=0;k<4;k++) tc[4*i+k] = u8[32*i+24+k];
+      let w=(u8[32*i+28]-128)/128, x=(u8[32*i+29]-128)/128, y=(u8[32*i+30]-128)/128, z=(u8[32*i+31]-128)/128;
+      const qn = Math.hypot(w,x,y,z) || 1; w/=qn; x/=qn; y/=qn; z/=qn;
+      const R = [1-2*(y*y+z*z), 2*(x*y-w*z), 2*(x*z+w*y),  2*(x*y+w*z), 1-2*(x*x+z*z), 2*(y*z-w*x),  2*(x*z-w*y), 2*(y*z+w*x), 1-2*(x*x+y*y)];
+      const s2=[sx*sx, sy*sy, sz*sz];
+      const C = (r,c) => R[3*r]*R[3*c]*s2[0] + R[3*r+1]*R[3*c+1]*s2[1] + R[3*r+2]*R[3*c+2]*s2[2];
+      t1[4*i]=C(0,0); t1[4*i+1]=C(0,1); t1[4*i+2]=C(0,2); t1[4*i+3]=C(1,1); t2[4*i]=C(1,2); t2[4*i+1]=C(2,2);
+    }
+    const tex = (data, ifmt, fmt, type) => { const t=gl.createTexture(); gl.bindTexture(gl.TEXTURE_2D,t);
+      gl.texImage2D(gl.TEXTURE_2D,0,ifmt,W,H,0,fmt,type,data);
+      for (const [k,v] of [[gl.TEXTURE_MIN_FILTER,gl.NEAREST],[gl.TEXTURE_MAG_FILTER,gl.NEAREST],[gl.TEXTURE_WRAP_S,gl.CLAMP_TO_EDGE],[gl.TEXTURE_WRAP_T,gl.CLAMP_TO_EDGE]]) gl.texParameteri(gl.TEXTURE_2D,k,v);
+      return t; };
+    this.tex = [tex(tp, gl.RGBA32F, gl.RGBA, gl.FLOAT), tex(t1, gl.RGBA32F, gl.RGBA, gl.FLOAT),
+                tex(t2, gl.RGBA32F, gl.RGBA, gl.FLOAT), tex(tc, gl.RGBA8, gl.RGBA, gl.UNSIGNED_BYTE)];
+    gl.bindTexture(gl.TEXTURE_2D, null);
+    this.W = W; this.n = n; this.count = n;
+    this.vao = gl.createVertexArray(); gl.bindVertexArray(this.vao);
+    this.ibuf = gl.createBuffer(); gl.bindBuffer(gl.ARRAY_BUFFER, this.ibuf);
+    const init = new Uint32Array(n); for (let i=0;i<n;i++) init[i]=i; gl.bufferData(gl.ARRAY_BUFFER, init, gl.DYNAMIC_DRAW);
+    const al = gl.getAttribLocation(p, "a_index"); gl.enableVertexAttribArray(al);
+    gl.vertexAttribIPointer(al, 1, gl.UNSIGNED_INT, 0, 0); gl.vertexAttribDivisor(al, 1);
+    gl.bindVertexArray(null); gl.bindBuffer(gl.ARRAY_BUFFER, null);
+    this.sorted = 0;
+    if (!this.worker){
+      this.worker = new Worker(URL.createObjectURL(new Blob([WORKER], {type:"text/javascript"})));
+      this.worker.onmessage = (e) => { if (!this.gl) return; this.pendingIdx = new Uint32Array(e.data.idx); this.onSorted && this.onSorted(); };
+    }
+    this.worker.postMessage({pos: posOnly.buffer}, [posOnly.buffer]);
+    this.ready = true;
+  }
+  requestSort(mvp){
+    const row = [mvp[3], mvp[7], mvp[11], mvp[15]];
+    const L = this.lastRow; const nrm = Math.hypot(...row);
+    if (L && Math.hypot(row[0]-L[0],row[1]-L[1],row[2]-L[2]) / nrm < 2e-3 && this.lastCount === this.count) return;
+    this.lastRow = row; this.lastCount = this.count;
+    this.worker.postMessage({row, count:this.count, id: ++this.sortId});
+  }
+  draw(mvp, vpW, vpH, size){
+    const gl = this.gl; if (!this.ready) return;
+    if (this.pendingIdx){ gl.bindBuffer(gl.ARRAY_BUFFER, this.ibuf); gl.bufferSubData(gl.ARRAY_BUFFER, 0, this.pendingIdx);
+      gl.bindBuffer(gl.ARRAY_BUFFER, null); this.sorted = this.pendingIdx.length; this.pendingIdx = null; }
+    this.requestSort(mvp);
+    const nDraw = Math.min(this.sorted || this.count, this.count);
+    gl.useProgram(this.prog);
+    gl.uniformMatrix4fv(this.loc.u_mvp, false, mvp instanceof Float32Array ? mvp : new Float32Array(mvp));
+    gl.uniform2f(this.loc.u_vp, vpW, vpH); gl.uniform1f(this.loc.u_size, size); gl.uniform1i(this.loc.u_w, this.W);
+    ["t_pos","t_c1","t_c2","t_col"].forEach((nm,k) => { gl.activeTexture(gl.TEXTURE0+k); gl.bindTexture(gl.TEXTURE_2D, this.tex[k]); gl.uniform1i(this.loc[nm], k); });
+    gl.disable(gl.DEPTH_TEST); gl.depthMask(false); gl.disable(gl.CULL_FACE);
+    gl.enable(gl.BLEND); gl.blendFuncSeparate(gl.SRC_ALPHA, gl.ONE_MINUS_SRC_ALPHA, gl.ONE, gl.ONE_MINUS_SRC_ALPHA);
+    gl.bindVertexArray(this.vao);
+    gl.drawArraysInstanced(gl.TRIANGLE_STRIP, 0, 4, nDraw);
+    // restore WebGL default state (required when sharing the Google Maps context)
+    gl.bindVertexArray(null); gl.useProgram(null);
+    for (let k=0;k<4;k++){ gl.activeTexture(gl.TEXTURE0+k); gl.bindTexture(gl.TEXTURE_2D, null); }
+    gl.activeTexture(gl.TEXTURE0); gl.disable(gl.BLEND); gl.blendFunc(gl.ONE, gl.ZERO); gl.depthMask(true);
+  }
+}
+
+// ======================================================================= ground imagery (satellite tiles in the ENU frame)
+const GVS = `#version 300 es
+in vec3 a_p; in vec2 a_uv; uniform mat4 u_mvp; out vec2 v_uv;
+void main(){ v_uv=a_uv; gl_Position=u_mvp*vec4(a_p,1.0); }`;
+const GFS = `#version 300 es
+precision mediump float; in vec2 v_uv; uniform sampler2D u_t; uniform float u_op; out vec4 o;
+void main(){ vec3 c=texture(u_t,v_uv).rgb; o=vec4(c*u_op, 1.0); }`;
+const LVS = `#version 300 es
+in vec3 a_p; uniform mat4 u_mvp; uniform float u_ps; void main(){ gl_Position=u_mvp*vec4(a_p,1.0); gl_PointSize=u_ps; }`;
+const LFS = `#version 300 es
+precision mediump float; uniform vec4 u_c; out vec4 o; void main(){ o=u_c; }`;
+
+function prog(gl, vs, fs){ const sh=(t,s)=>{const o=gl.createShader(t); gl.shaderSource(o,s); gl.compileShader(o);
+  if(!gl.getShaderParameter(o,gl.COMPILE_STATUS)) throw new Error(gl.getShaderInfoLog(o)); return o;};
+  const p=gl.createProgram(); gl.attachShader(p,sh(gl.VERTEX_SHADER,vs)); gl.attachShader(p,sh(gl.FRAGMENT_SHADER,fs)); gl.linkProgram(p);
+  if(!gl.getProgramParameter(p,gl.LINK_STATUS)) throw new Error(gl.getProgramInfoLog(p)); return p; }
+
+const tile2lon = (x,z) => x/2**z*360-180;
+const tile2lat = (y,z) => Math.atan(Math.sinh(Math.PI*(1-2*y/2**z)))/D2R;
+const lon2tile = (lon,z) => Math.floor((lon+180)/360*2**z);
+const lat2tile = (lat,z) => { const r=lat*D2R; return Math.floor((1-Math.log(Math.tan(r)+1/Math.cos(r))/Math.PI)/2*2**z); };
+
+class Imagery {
+  constructor(gl, enu, groundU){ this.gl=gl; this.enu=enu; this.gu=groundU; this.tiles=[]; this.p=prog(gl,GVS,GFS);
+    this.loc={mvp:gl.getUniformLocation(this.p,"u_mvp"), t:gl.getUniformLocation(this.p,"u_t"), op:gl.getUniformLocation(this.p,"u_op")}; this.op=1; }
+  addTile(z, x, y, url, onload){
+    const gl=this.gl, h=this.enu.inv(0,0,this.gu)[2];
+    const c=[[x,y,0,0],[x+1,y,1,0],[x,y+1,0,1],[x+1,y+1,1,1]].map(([tx,ty,u,v])=>[...this.enu.fwd(tile2lat(ty,z), tile2lon(tx,z), h).slice(0,2), this.gu - 0.05*(20-z), u, v]);
+    const vb=new Float32Array(c.flat()), vao=gl.createVertexArray(), buf=gl.createBuffer();
+    gl.bindVertexArray(vao); gl.bindBuffer(gl.ARRAY_BUFFER,buf); gl.bufferData(gl.ARRAY_BUFFER,vb,gl.STATIC_DRAW);
+    const ap=gl.getAttribLocation(this.p,"a_p"), au=gl.getAttribLocation(this.p,"a_uv");
+    gl.enableVertexAttribArray(ap); gl.vertexAttribPointer(ap,3,gl.FLOAT,false,20,0);
+    gl.enableVertexAttribArray(au); gl.vertexAttribPointer(au,2,gl.FLOAT,false,20,12); gl.bindVertexArray(null);
+    const t={z, vao, tex:null}; this.tiles.push(t); this.tiles.sort((a,b)=>a.z-b.z);
+    const img=new Image(); img.crossOrigin="anonymous";
+    return new Promise(res => { img.onload=()=>{ t.tex=gl.createTexture(); gl.bindTexture(gl.TEXTURE_2D,t.tex);
+        gl.texImage2D(gl.TEXTURE_2D,0,gl.RGB,gl.RGB,gl.UNSIGNED_BYTE,img); gl.generateMipmap(gl.TEXTURE_2D);
+        gl.texParameteri(gl.TEXTURE_2D,gl.TEXTURE_MIN_FILTER,gl.LINEAR_MIPMAP_LINEAR); gl.texParameteri(gl.TEXTURE_2D,gl.TEXTURE_MAG_FILTER,gl.LINEAR);
+        gl.texParameteri(gl.TEXTURE_2D,gl.TEXTURE_WRAP_S,gl.CLAMP_TO_EDGE); gl.texParameteri(gl.TEXTURE_2D,gl.TEXTURE_WRAP_T,gl.CLAMP_TO_EDGE);
+        gl.bindTexture(gl.TEXTURE_2D,null); onload&&onload(); res(true); };
+      img.onerror=()=>res(false); img.src=url; });
+  }
+  draw(mvp){ const gl=this.gl; gl.useProgram(this.p); gl.uniformMatrix4fv(this.loc.mvp,false,mvp); gl.uniform1f(this.loc.op,this.op);
+    gl.activeTexture(gl.TEXTURE0); gl.uniform1i(this.loc.t,0); gl.disable(gl.BLEND); gl.disable(gl.DEPTH_TEST);
+    for (const t of this.tiles){ if(!t.tex) continue; gl.bindTexture(gl.TEXTURE_2D,t.tex); gl.bindVertexArray(t.vao); gl.drawArrays(gl.TRIANGLE_STRIP,0,4); }
+    gl.bindVertexArray(null); gl.bindTexture(gl.TEXTURE_2D,null); }
+}
+
+class Lines {
+  constructor(gl){ this.gl=gl; this.p=prog(gl,LVS,LFS); this.items=[];
+    this.loc={mvp:gl.getUniformLocation(this.p,"u_mvp"), c:gl.getUniformLocation(this.p,"u_c"), ps:gl.getUniformLocation(this.p,"u_ps")}; }
+  set(name, pts, color, mode, ps=4){ const gl=this.gl; let it=this.items.find(i=>i.name===name);
+    if(!it){ it={name, vao:gl.createVertexArray(), buf:gl.createBuffer(), on:true}; this.items.push(it); }
+    gl.bindVertexArray(it.vao); gl.bindBuffer(gl.ARRAY_BUFFER,it.buf); gl.bufferData(gl.ARRAY_BUFFER,new Float32Array(pts.flat()),gl.DYNAMIC_DRAW);
+    const ap=gl.getAttribLocation(this.p,"a_p"); gl.enableVertexAttribArray(ap); gl.vertexAttribPointer(ap,3,gl.FLOAT,false,12,0); gl.bindVertexArray(null);
+    Object.assign(it,{n:pts.length, color, mode, ps}); return it; }
+  draw(mvp){ const gl=this.gl; gl.useProgram(this.p); gl.uniformMatrix4fv(this.loc.mvp,false,mvp);
+    gl.enable(gl.BLEND); gl.blendFunc(gl.SRC_ALPHA,gl.ONE_MINUS_SRC_ALPHA);
+    for(const it of this.items){ if(!it.on||!it.n) continue; gl.uniform4fv(this.loc.c,it.color); gl.uniform1f(this.loc.ps,it.ps);
+      gl.bindVertexArray(it.vao); gl.drawArrays(it.mode,0,it.n); }
+    gl.bindVertexArray(null); gl.disable(gl.BLEND); }
+}
+
+// ======================================================================= app
+const S = { size:1, show:{splat:true, sat:true, cams:true, gnss:false}, measuring:false, mpts:[] };
+const cv = $("view");
+const gl = cv.getContext("webgl2", {antialias:true, premultipliedAlpha:false, preserveDrawingBuffer:true});
+
+async function main(){
+  if (!gl) { $("loading").textContent = "WebGL2 tidak tersedia di browser ini."; return; }
+  const meta = await (await fetch("meta.json")).json();
+  const traj = await (await fetch("trajectory.json")).json();
+  S.meta = meta; $("sceneName").textContent = meta.title.replace(/^GeoSplat\s*-\s*/,"");
+  const enu = makeENU(meta.origin.lat, meta.origin.lon, meta.origin.h); S.enu = enu;
+  const gu = meta.ground_u; S.gu = gu;
+  const u = toUTM(meta.core.centre_lat, meta.core.centre_lon);
+  $("geo").innerHTML = [["Datum","WGS84"],["Lat",meta.core.centre_lat.toFixed(7)],["Lon",meta.core.centre_lon.toFixed(7)],
+    ["UTM "+u.zone+(u.south?"S":"N"), u.E.toFixed(2)+" E"],["",u.N.toFixed(2)+" N"],
+    ["RMSE SfM–GNSS", meta.accuracy.sfm_vs_gnss_rmse_3d_m.toFixed(3)+" m"],["Check-point", meta.accuracy.checkpoint_rmse_3d_m.toFixed(3)+" m"],
+    ["PSNR", meta.metrics?.ours_30000 ? meta.metrics.ours_30000.PSNR.toFixed(2)+" dB" : "–"]].map(([a,b])=>`<div>${a}</div><div>${b}</div>`).join("");
+
+  // splats
+  const resp = await fetch(meta.splats.file); const total=+resp.headers.get("content-length")||meta.splats.count*32;
+  const rd=resp.body.getReader(), buf=new Uint8Array(total); let got=0;
+  for(;;){ const {done,value}=await rd.read(); if(done) break; buf.set(value,got); got+=value.length; $("loading").textContent=`Memuat splat ${(100*got/total).toFixed(0)}%`; }
+  const R = new SplatRenderer(); R.init(gl, buf.buffer.slice(0, got-got%32)); S.R=R;
+  R.onSorted = () => requestAnimationFrame(frame);
+  $("nSplat").textContent = R.n.toLocaleString()+" splats"; $("sN").textContent = R.n.toLocaleString();
+  $("loading").style.display="none";
+
+  // paths
+  S.L = new Lines(gl);
+  S.L.set("cams", traj.sfm.map(p=>[p.e,p.n,p.u]), [0,0.84,1,1], gl.POINTS, 5);
+  S.L.set("gnss", traj.gnss.map(p=>enu.fwd(p.lat,p.lon,p.h)), [1,0.82,0.25,1], gl.LINE_STRIP);
+  S.L.set("measure", [], [1,0.42,0.07,1], gl.LINE_STRIP);
+  S.L.set("mpts", [], [1,0.42,0.07,1], gl.POINTS, 9);
+  syncLayers();
+
+  // imagery
+  S.img = new Imagery(gl, enu, gu);
+  await loadImagery(meta);
+  resetView(); frame();
+  window.__ready = true;
+}
+
+async function loadImagery(meta){
+  const cfg = window.GEOSPLAT_CONFIG || {};
+  const key = cfg.googleMapsKey || localStorage.getItem("geosplat_gmaps_key") || "";
+  const c = {lat:meta.core.centre_lat, lon:meta.core.centre_lon};
+  const levels = [[17, 1500], [19, 320], [20, 140]];   // [zoom, half-extent m]  (~230 tiles)
+  let src = null, mk = null, attr = "";
+  if (key) {
+    try {
+      const r = await fetch(`https://tile.googleapis.com/v1/createSession?key=${encodeURIComponent(key)}`,
+        {method:"POST", headers:{"Content-Type":"application/json"}, body:JSON.stringify({mapType:"satellite", language:"id-ID", region:"ID"})});
+      const j = await r.json();
+      if (!r.ok || !j.session) throw new Error(j.error?.message || ("HTTP "+r.status));
+      mk = (z,x,y) => `https://tile.googleapis.com/v1/2dtiles/${z}/${x}/${y}?session=${j.session}&key=${encodeURIComponent(key)}`;
+      src = "Google Satellite";
+      try { const o=meta.overlay; const v = await (await fetch(`https://tile.googleapis.com/tile/v1/viewport?session=${j.session}&key=${encodeURIComponent(key)}&zoom=19&north=${o.north}&south=${o.south}&east=${o.east}&west=${o.west}`)).json();
+            attr = "Imagery © Google" + (v.copyright ? ", " + v.copyright : ""); } catch { attr = "Imagery © Google"; }
+    } catch (e) {
+      toast(`Google Map Tiles API menolak permintaan: <b>${e.message}</b><br>Aktifkan <a href="https://console.cloud.google.com/apis/library/tile.googleapis.com" target="_blank">Map Tiles API</a> untuk project key ini. Sementara memakai Esri World Imagery.`, 0);
+    }
+  } else {
+    $("keyform").style.display = "block";
+  }
+  if (!mk) { mk = (z,x,y) => `https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/${z}/${y}/${x}`;
+             src = "Esri World Imagery"; attr = "Imagery © Esri, Maxar, Earthstar Geographics"; }
+  $("imgSrc").textContent = src; $("sImg").textContent = src; $("sAttr").textContent = attr; S.imgSrc = src;
+  const jobs = [];
+  for (const [z, half] of levels) {
+    const dLat = half/111320, dLon = half/(111320*Math.cos(c.lat*D2R));
+    const x0=lon2tile(c.lon-dLon,z), x1=lon2tile(c.lon+dLon,z), y0=lat2tile(c.lat+dLat,z), y1=lat2tile(c.lat-dLat,z);
+    for (let x=x0;x<=x1;x++) for (let y=y0;y<=y1;y++) jobs.push([z,x,y]);
+  }
+  let ok=0, fail=0;
+  await Promise.all(jobs.map(([z,x,y]) => S.img.addTile(z,x,y,mk(z,x,y), () => requestAnimationFrame(frame)).then(r => r?ok++:fail++)));
+  if (fail && src.startsWith("Google")) toast(`${fail} dari ${jobs.length} tile Google gagal dimuat (zoom tinggi mungkin tidak tersedia di lokasi ini).`, 6000);
+  $("sImg").textContent = `${src} (${ok} tile)`;
+}
+
+// ======================================================================= camera (SuperSplat-like orbit)
+const cam = { tgt:[0,0,0], az:0, el:0, dist:500, fov:50 };
+function resetView(){ const m=S.meta; cam.tgt=[m.core.centre_e, m.core.centre_n, S.gu+15]; cam.az=-35*D2R; cam.el=42*D2R; cam.dist=m.core.radius_m*2.4; frame(); }
+function topView(){ const m=S.meta; cam.tgt=[m.core.centre_e, m.core.centre_n, S.gu]; cam.az=0; cam.el=89.9*D2R; cam.dist=m.core.radius_m*2.6; frame(); }
+function eye(){ return [cam.tgt[0]+cam.dist*Math.cos(cam.el)*Math.sin(cam.az), cam.tgt[1]-cam.dist*Math.cos(cam.el)*Math.cos(cam.az), cam.tgt[2]+cam.dist*Math.sin(cam.el)]; }
+function mvpNow(){ const e=eye(); return mul(perspective(cam.fov*D2R, cv.width/cv.height, Math.max(0.5,cam.dist*0.002), cam.dist*20+5000), lookAt(e, cam.tgt, [0,0,1])); }
+let raf=0;
+function frame(){ if (raf) return; raf = requestAnimationFrame(() => { raf=0; draw(); }); }
+function draw(){
+  if (!S.R) return;
+  const dpr=Math.min(devicePixelRatio||1,2), W=Math.floor(cv.clientWidth*dpr), H=Math.floor(cv.clientHeight*dpr);
+  if (cv.width!==W||cv.height!==H){ cv.width=W; cv.height=H; }
+  const mvp = new Float32Array(mvpNow());
+  gl.viewport(0,0,W,H); gl.clearColor(0,0,0,1); gl.clear(gl.COLOR_BUFFER_BIT|gl.DEPTH_BUFFER_BIT);
+  if (S.show.sat && S.img) S.img.draw(mvp);
+  if (S.show.splat) S.R.draw(mvp, W, H, S.size);
+  S.L.draw(mvp);
+  $("needle").setAttribute("transform", `rotate(${cam.az/D2R})`);
+}
+function groundHit(px, py){            // ray from camera through pixel -> intersection with ground plane z = gu
+  const r=cv.getBoundingClientRect(), x=(px-r.left)/r.width*2-1, y=1-(py-r.top)/r.height*2;
+  const M=mvpNow(), inv=invert(M); if(!inv) return null;
+  const un=(z)=>{ const v=[0,1,2,3].map(i=>inv[i]*x+inv[4+i]*y+inv[8+i]*z+inv[12+i]); return [v[0]/v[3],v[1]/v[3],v[2]/v[3]]; };
+  const a=un(-1), b=un(1), d=[b[0]-a[0],b[1]-a[1],b[2]-a[2]]; if (Math.abs(d[2])<1e-9) return null;
+  const t=(S.gu-a[2])/d[2]; if (t<0) return null; return [a[0]+t*d[0], a[1]+t*d[1], S.gu];
+}
+function invert(m){ const inv=new Array(16), [a00,a01,a02,a03,a10,a11,a12,a13,a20,a21,a22,a23,a30,a31,a32,a33]=m;
+  const b00=a00*a11-a01*a10,b01=a00*a12-a02*a10,b02=a00*a13-a03*a10,b03=a01*a12-a02*a11,b04=a01*a13-a03*a11,b05=a02*a13-a03*a12,
+        b06=a20*a31-a21*a30,b07=a20*a32-a22*a30,b08=a20*a33-a23*a30,b09=a21*a32-a22*a31,b10=a21*a33-a23*a31,b11=a22*a33-a23*a32;
+  let det=b00*b11-b01*b10+b02*b09+b03*b08-b04*b07+b05*b06; if(!det) return null; det=1/det;
+  inv[0]=(a11*b11-a12*b10+a13*b09)*det; inv[1]=(a02*b10-a01*b11-a03*b09)*det; inv[2]=(a31*b05-a32*b04+a33*b03)*det; inv[3]=(a22*b04-a21*b05-a23*b03)*det;
+  inv[4]=(a12*b08-a10*b11-a13*b07)*det; inv[5]=(a00*b11-a02*b08+a03*b07)*det; inv[6]=(a32*b02-a30*b05-a33*b01)*det; inv[7]=(a20*b05-a22*b02+a23*b01)*det;
+  inv[8]=(a10*b10-a11*b08+a13*b06)*det; inv[9]=(a01*b08-a00*b10-a03*b06)*det; inv[10]=(a30*b04-a31*b02+a33*b00)*det; inv[11]=(a21*b02-a20*b04-a23*b00)*det;
+  inv[12]=(a11*b07-a10*b09-a12*b06)*det; inv[13]=(a00*b09-a01*b07+a02*b06)*det; inv[14]=(a31*b01-a30*b03-a32*b00)*det; inv[15]=(a20*b03-a21*b01+a22*b00)*det; return inv; }
+
+// mouse: left = orbit, right / shift+left = pan, wheel = zoom, double-click = set pivot
+let drag=null;
+cv.addEventListener("contextmenu", e=>e.preventDefault());
+cv.addEventListener("mousedown", e => {
+  if (S.measuring && e.button===0){ const p=groundHit(e.clientX,e.clientY); if(p){ if(S.mpts.length>=2) S.mpts=[]; S.mpts.push(p); updateMeasure(); } return; }
+  drag={x:e.clientX,y:e.clientY,b:(e.button===2||e.shiftKey)?"pan":"orbit",az:cam.az,el:cam.el,tgt:[...cam.tgt]}; cv.style.cursor="grabbing"; });
+window.addEventListener("mouseup", () => { drag=null; cv.style.cursor=""; });
+window.addEventListener("mousemove", e => {
+  const p = groundHit(e.clientX, e.clientY);
+  if (p && S.enu){ const [la,lo]=S.enu.inv(p[0],p[1],p[2]), u=toUTM(la,lo); $("sCur").textContent=`${la.toFixed(7)}, ${lo.toFixed(7)}  ·  UTM ${u.E.toFixed(2)} E ${u.N.toFixed(2)} N`; }
+  if (!drag) return; const dx=e.clientX-drag.x, dy=e.clientY-drag.y;
+  if (drag.b==="orbit"){ cam.az=drag.az-dx*0.005; cam.el=Math.min(89.9*D2R, Math.max(3*D2R, drag.el+dy*0.005)); }
+  else { // screen right r = (cos az, sin az), screen forward on ground f = (-sin az, cos az)
+         const s=cam.dist*Math.tan(cam.fov*D2R/2)*2/cv.clientHeight, ca=Math.cos(cam.az), sa=Math.sin(cam.az), k=1/Math.max(Math.sin(cam.el),0.25);
+         cam.tgt=[drag.tgt[0] - ca*dx*s - sa*dy*s*k, drag.tgt[1] - sa*dx*s + ca*dy*s*k, drag.tgt[2]]; }
+  frame(); });
+cv.addEventListener("wheel", e => { cam.dist=Math.min(8000, Math.max(5, cam.dist*Math.exp(e.deltaY*0.0012))); frame(); e.preventDefault(); }, {passive:false});
+cv.addEventListener("dblclick", e => { const p=groundHit(e.clientX,e.clientY); if(p){ cam.tgt=[p[0],p[1],p[2]]; frame(); } });
+window.addEventListener("resize", frame);
+
+function updateMeasure(){
+  const pts=S.mpts.map(p=>[p[0],p[1],p[2]+0.3]); S.L.set("measure", pts, [1,0.42,0.07,1], gl.LINE_STRIP); S.L.set("mpts", pts, [1,0.42,0.07,1], gl.POINTS, 9);
+  $("mval").textContent = S.mpts.length===2 ? Math.hypot(S.mpts[1][0]-S.mpts[0][0], S.mpts[1][1]-S.mpts[0][1]).toFixed(2)+" m" : "–"; frame(); }
+
+// ======================================================================= UI
+const EYE='<svg viewBox="0 0 24 24" fill="none" stroke-width="2"><path d="M2 12s4-7 10-7 10 7 10 7-4 7-10 7S2 12 2 12z"/><circle cx="12" cy="12" r="3"/></svg>';
+document.querySelectorAll(".eye").forEach(b => { b.innerHTML=EYE; b.onclick=()=>{ const k=b.dataset.layer; S.show[k]=!S.show[k]; syncLayers(); frame(); }; });
+function syncLayers(){ document.querySelectorAll(".eye").forEach(b=>b.classList.toggle("off", !S.show[b.dataset.layer]));
+  if (S.L) S.L.items.forEach(i => { if (i.name==="cams") i.on=S.show.cams; if (i.name==="gnss") i.on=S.show.gnss; }); }
+document.querySelectorAll(".hdr").forEach(h => h.onclick = () => { const el=$(h.dataset.toggle); const hid=el.style.display==="none"; el.style.display=hid?"":"none"; h.classList.toggle("closed",!hid); });
+$("satOp").oninput = () => { if (S.img){ S.img.op=$("satOp").value/100; frame(); } };
+$("tReset").onclick = resetView; $("tTop").onclick = topView;
+$("tOrbit").onclick = () => { cam.el=35*D2R; frame(); };
+$("compass").onclick = () => { cam.az=0; frame(); };
+$("tMeasure").onclick = () => { S.measuring=!S.measuring; $("tMeasure").classList.toggle("on",S.measuring); cv.classList.toggle("measuring",S.measuring);
+  $("measure").style.display=S.measuring?"flex":"none"; if(!S.measuring){ S.mpts=[]; updateMeasure(); } };
+$("mclear").onclick = () => { S.mpts=[]; updateMeasure(); };
+$("tBlink").onclick = () => { if (S.blink){ clearInterval(S.blink); S.blink=null; S.show.splat=true; $("tBlink").classList.remove("on"); syncLayers(); frame(); return; }
+  $("tBlink").classList.add("on"); S.blink=setInterval(()=>{ S.show.splat=!S.show.splat; syncLayers(); frame(); }, 800); };
+$("tShot").onclick = () => { draw(); const a=document.createElement("a"); a.download="geosplat_view.png"; a.href=cv.toDataURL("image/png"); a.click(); };
+$("keyBtn").onclick = () => { const k=$("keyIn").value.trim(); if(k){ localStorage.setItem("geosplat_gmaps_key",k); location.reload(); } };
+main().catch(e => { $("loading").textContent = "Error: " + e.message; console.error(e); });
+</script>
+</body>
+</html>
