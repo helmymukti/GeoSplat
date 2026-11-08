@@ -1,0 +1,18 @@
+# environments / downloads
+.venv/
+.conda_gs/
+tools/
+third_party/
+runtime/
+__pycache__/
+*.pyc
+# secrets / local config
+config.local.js
+settings.json
+# project outputs
+*_GeoSplat/
+*.MP4
+*.mp4
+*.SRT
+*.srt
+*.ply
