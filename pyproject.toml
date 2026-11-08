@@ -1,0 +1,23 @@
+[project]
+name = "geosplat"
+version = "0.1.0"
+description = "Local DJI drone video to georeferenced 3D Gaussian Splatting (COLMAP + Graphdeco 3DGS + GNSS)"
+readme = "README.md"
+license = { text = "MIT" }
+authors = [{ name = "Helmy Mukti Wijaya" }]
+requires-python = ">=3.10"
+dependencies = ["numpy>=1.24", "pandas>=2.0", "matplotlib>=3.7", "opencv-python>=4.8", "pillow>=10.0", "psutil>=5.9"]
+keywords = ["UAV", "photogrammetry", "3D Gaussian Splatting", "georeferencing", "GNSS", "COLMAP", "DJI"]
+
+[project.optional-dependencies]
+gui = ["PySide6>=6.6"]
+test = ["pytest>=7"]
+
+[project.scripts]
+geosplat = "geosplat.cli:main"
+
+[tool.setuptools]
+packages = ["geosplat"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]

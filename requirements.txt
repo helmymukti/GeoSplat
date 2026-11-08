@@ -1,0 +1,9 @@
+# GeoSplat base environment (.venv). The Gaussian Splatting GPU environment is created separately
+# by setup/install_gaussian_splatting.py (PyTorch CUDA build matched to the local CUDA Toolkit).
+numpy>=1.24
+pandas>=2.0
+matplotlib>=3.7
+opencv-python>=4.8
+pillow>=10.0
+psutil>=5.9
+PySide6>=6.6
