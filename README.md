@@ -1,6 +1,6 @@
 # GeoSplat
 
-**DJI drone video → georeferenced 3D Gaussian Splatting, fully local, one click.**
+**Rapid UAV videogrammetry with georeferenced 3D Gaussian Splatting and built-in datum verification**
 
 Drag a DJI video (and its `.SRT`, if you have one) into the window and press **Start**. GeoSplat then:
 
