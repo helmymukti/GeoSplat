@@ -2,7 +2,7 @@
 
 **DJI drone video → georeferenced 3D Gaussian Splatting, fully local, one click.**
 
-Drag a DJI video (and its `.SRT`, if you have one) into the window and press **Mulai**. GeoSplat then:
+Drag a DJI video (and its `.SRT`, if you have one) into the window and press **Start**. GeoSplat then:
 
 1. decodes the flight telemetry, from the SRT and/or the GNSS track embedded in the MP4;
 2. extracts frames and synchronises each one with the telemetry;
@@ -11,6 +11,7 @@ Drag a DJI video (and its `.SRT`, if you have one) into the window and press **M
 5. trains 3D Gaussian Splatting (official Graphdeco implementation) directly in metric ENU coordinates;
 6. exports georeferenced Gaussians (ENU / UTM / original frame), a GS orthophoto with a world file, and the camera trajectory;
 7. opens a **satellite viewer** in which the Gaussians stand on Google (or Esri) satellite imagery at their true position.
+8. checks the height datum and, if RTK checkpoints are given, corrects it (stage 6, see below).
 
 Nothing is uploaded. The video is read in place and never copied or modified.
 
@@ -33,11 +34,11 @@ Example run (RTX 4070 Laptop 8 GB): 216 frames → 216/216 registered, reproject
 
 1. Download and unzip GeoSplat anywhere (for example `D:\GeoSplat`).
 2. Double-click **`GeoSplat.bat`**. The first run creates `.venv`, installs the Python packages, and fetches portable FFmpeg and COLMAP into `tools\` if they are not already installed.
-3. In the app, click **Siapkan GPU…** once. This installs the GPU part: PyTorch CUDA and Graphdeco 3D Gaussian Splatting, cloned from the official repository and compiled locally.
-4. Drag `DJI_xxxx.MP4` (+ `DJI_xxxx.SRT`) onto the window, or onto `GeoSplat.bat` itself, then press **Mulai**.
-5. When it finishes, the satellite viewer opens automatically. Use **Buka Viewer Satelit** to open it again later.
+3. In the app, click **Set up GPU…** once. This installs the GPU part: PyTorch CUDA and Graphdeco 3D Gaussian Splatting, cloned from the official repository and compiled locally.
+4. Drag `DJI_xxxx.MP4` (+ `DJI_xxxx.SRT`) onto the window, or onto `GeoSplat.bat` itself, then press **Start**. Optionally add an RTK checkpoint CSV (drop it with the video or use **RTK checkpoints → Browse…**).
+5. When it finishes, the satellite viewer opens automatically. Use **Open satellite viewer** to open it again later.
 
-Optional: paste a Google API key with the **Map Tiles API** enabled into the *Satelit* field to get Google satellite imagery. Without a key, Esri World Imagery is used. Restrict the key to the HTTP referrer `http://127.0.0.1:8765/*`.
+Optional: paste a Google API key with the **Map Tiles API** enabled into the *Satellite imagery* field to get Google satellite imagery. Without a key, Esri World Imagery is used. Restrict the key to the HTTP referrer `http://127.0.0.1:8765/*`.
 
 Command line: `.venv\Scripts\python -m geosplat.cli VIDEO.MP4 [--srt FILE.SRT] [--fps 2] [--profile balanced] --serve`
 
@@ -104,6 +105,9 @@ tests/                  unit tests (pytest)
 <sup>2</sup> Department of Geomatics Engineering, Universitas Gadjah Mada (UGM), Yogyakarta, Indonesia
 <sup>*</sup> Corresponding author: helmy.mukti.wijaya@gmail.com
 
+## Credits in the app
+The authors, their affiliations, the licence and a ready-to-copy citation (APA and BibTeX) are shown in **Help → About GeoSplat** and in the footer of the main window. The same information is written to every project (`logs/job.json`, field `provenance`), to the HTML reports and to the satellite viewer, so credit stays with the results when they are shared.
+
 ## How to cite
 If you use GeoSplat, please cite this repository (see `CITATION.cff`) **and the methods it builds on**. At minimum: Kerbl et al. 2023 (3D Gaussian Splatting), Schönberger & Frahm 2016 (COLMAP), and Umeyama 1991 (similarity estimation). The full list is in [docs/METHODS.md](docs/METHODS.md#references).
 
@@ -112,18 +116,3 @@ See [CONTRIBUTING.md](CONTRIBUTING.md). New methods must be documented with refe
 
 ## Licence
 GeoSplat's own code is released under the MIT licence (`LICENSE`). GeoSplat **does not include** third-party code: Graphdeco 3D Gaussian Splatting, COLMAP and FFmpeg are fetched from their official sources at install time and remain under their own licences. **Note:** the Graphdeco Gaussian Splatting software is licensed for *non-commercial research and evaluation use only*. See `THIRD_PARTY_NOTICES.md`.
-
----
-
-### Ringkasan (Bahasa Indonesia)
-GeoSplat mengubah video drone DJI menjadi model 3D Gaussian Splatting yang tergeoreferensi. Semua proses berjalan secara lokal; video tidak diunggah ke mana pun.
-
-**Cara pakai:**
-1. Jalankan `GeoSplat.bat`.
-2. Klik **Siapkan GPU…** (cukup sekali).
-3. Seret file video (dan SRT, kalau ada) ke jendela aplikasi.
-4. Klik **Mulai**.
-
-Opsional: masukkan juga CSV check point RTK (tombol **Pilih CSV…** atau seret bersama video). Tahap 6 akan mengoreksi datum tinggi model dan menulis hasilnya ke `10_Vertical_Correction\`. Tanpa check point, tinggi absolut model **tidak** bisa dipercaya karena `abs_alt` DJI bergantung pada tinggi home point saat take-off.
-
-Setelah selesai, viewer satelit terbuka otomatis. Penjelasan metode dan daftar sitasinya ada di `docs/METHODS.md`.

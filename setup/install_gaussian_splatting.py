@@ -59,33 +59,33 @@ def stream(cmd, shell=False, env=None):
 def main():
     global ENV_PY
     os.makedirs(RUNTIME, exist_ok=True)
-    log("=== GeoSplat Phase 4 setup ===")
+    log("=== GeoSplat GPU setup (3D Gaussian Splatting) ===")
     subprocess.run([sys.executable, os.path.join(HERE, "setup", "check_gpu_toolchain.py")], capture_output=True)
     env = json.load(open(os.path.join(RUNTIME, "gpu_toolchain.json")))
     r = env["ready"]
     missing = [k for k, v in r.items() if not v]
     drv = env.get("driver_max_cuda")
     if missing:
-        log("Belum bisa install. Yang kurang: " + ", ".join(missing))
+        log("Cannot install yet. Missing: " + ", ".join(missing))
         if not r["cuda_toolkit_nvcc"]:
-            log(f"  * CUDA Toolkit: driver Anda mendukung sampai CUDA {drv}. Install CUDA Toolkit 12.4 "
-                "(cocok dengan PyTorch cu124) dari https://developer.nvidia.com/cuda-12-4-0-download-archive "
-                "(Windows > x86_64 > 11 > exe local). Jangan install versi > " + str(drv) + ".")
+            log(f"  * CUDA Toolkit: your driver supports up to CUDA {drv}. Install CUDA Toolkit 12.4 "
+                "(matches PyTorch cu124) from https://developer.nvidia.com/cuda-12-4-0-download-archive "
+                "(Windows > x86_64 > 11 > exe local). Do not install a version newer than " + str(drv) + ".")
         if not r["msvc_build_tools"]:
             log('  * Visual Studio 2022 Build Tools (C++):  winget install Microsoft.VisualStudio.2022.BuildTools '
                 '--override "--quiet --wait --add Microsoft.VisualStudio.Workload.VCTools --includeRecommended"')
         if not r["git"]:
             log("  * Git:  winget install Git.Git")
         if not r["python_env_tool (conda or py launcher)"]:
-            log("  * Butuh Miniconda/Anaconda ATAU Python 3.10-3.12 (py launcher). winget install Python.Python.3.12")
-        log("Setelah terinstal, tutup jendela ini lalu jalankan setup_gaussian_splatting.bat lagi.")
+            log("  * Needs Miniconda/Anaconda OR Python 3.10-3.12 (py launcher):  winget install Python.Python.3.12")
+        log("After installing, close this window and click 'Set up GPU…' in GeoSplat again.")
         return 2
 
     m = re.match(r"(\d+)\.(\d+)", env["nvcc_version"])
     nv = (int(m.group(1)), int(m.group(2)))
     pick = next((x for x in TORCH_MAP if x[0] <= nv <= x[1]), None)
     if pick is None:
-        log(f"CUDA Toolkit {env['nvcc_version']} belum ada pemetaan PyTorch yang teruji di skrip ini. Stop.")
+        log(f"CUDA Toolkit {env['nvcc_version']} has no tested PyTorch mapping in this script. Stopping.")
         return 3
     torch_v, tv_v, tag = pick[2], pick[3], pick[4]
     vs = next(v for v in env["visual_studio"] if v["vcvars64"])
@@ -95,24 +95,24 @@ def main():
     # CUDA <= 12.4 officially supports VS 2022 up to 17.9; newer MSVC needs -allow-unsupported-compiler
     allow_unsup = nv <= (12, 4) and vs_minor >= (17, 10)
     if allow_unsup:
-        log(f"VS {vs['version']} lebih baru dari yang didukung resmi CUDA {env['nvcc_version']} "
-            "-> memakai -allow-unsupported-compiler")
-    log(f"CUDA_HOME dikunci ke {cuda_home}")
+        log(f"VS {vs['version']} is newer than officially supported by CUDA {env['nvcc_version']} "
+            "-> using -allow-unsupported-compiler")
+    log(f"CUDA_HOME pinned to {cuda_home}")
     log(f"nvcc {env['nvcc_version']} | driver max CUDA {drv} | {vs['name']} {vs['version']}")
-    log(f"Rencana: repo Graphdeco -> {REPO}")
-    log(f"         env conda Python 3.10 -> {ENV}")
-    log(f"         torch {torch_v} + torchvision {tv_v} ({tag}), lalu kompilasi 3 ekstensi CUDA")
-    log("Perkiraan: download ~3 GB, disk ~7 GB, waktu 15-40 menit.")
-    ans = "y" if "--yes" in sys.argv else input("\nLanjutkan instalasi? ketik Y lalu Enter: ").strip().lower()
+    log(f"Plan:    Graphdeco repository -> {REPO}")
+    log(f"         Python 3.10 environment -> {ENV}")
+    log(f"         torch {torch_v} + torchvision {tv_v} ({tag}), then compile 3 CUDA extensions")
+    log("Estimate: ~3 GB download, ~7 GB disk, 15-40 minutes.")
+    ans = "y" if "--yes" in sys.argv else input("\nContinue with the installation? Type Y and press Enter: ").strip().lower()
     if ans != "y":
-        log("Dibatalkan oleh pengguna.")
+        log("Cancelled by the user.")
         return 1
 
     # 1. repo
     if not os.path.exists(os.path.join(REPO, "train.py")):
         os.makedirs(os.path.dirname(REPO), exist_ok=True)
         if stream(["git", "clone", "--recursive", REPO_URL, REPO]) != 0:
-            log("git clone gagal.")
+            log("git clone failed.")
             return 4
     else:
         stream(["git", "-C", REPO, "submodule", "update", "--init", "--recursive"])
@@ -132,7 +132,7 @@ def main():
         if not os.path.exists(ENV_PY) and os.path.exists(os.path.join(ENV, "Scripts", "python.exe")):
             ENV_PY = os.path.join(ENV, "Scripts", "python.exe")
         if rc != 0 or not os.path.exists(ENV_PY):
-            log("Pembuatan environment Python gagal (butuh conda atau Python 3.10-3.12).")
+            log("Creating the Python environment failed (needs conda or Python 3.10-3.12).")
             return 5
     pip = [ENV_PY, "-m", "pip"]
     stream(pip + ["install", "--no-cache-dir", "--upgrade", "pip", "setuptools", "wheel"])
@@ -141,7 +141,7 @@ def main():
     rc = stream(pip + ["install", "--no-cache-dir", f"torch=={torch_v}", f"torchvision=={tv_v}",
                        "--index-url", f"https://download.pytorch.org/whl/{tag}"])
     if rc != 0:
-        log("Install PyTorch gagal.")
+        log("PyTorch installation failed.")
         return 6
     stream(pip + ["install", "--no-cache-dir", "plyfile", "tqdm", "opencv-python", "joblib", "pandas",
                   "matplotlib", "lpips", "ninja"])
@@ -159,17 +159,17 @@ def main():
                 drv = letter + ":"
                 break
     if drv:
-        log(f"Folder app dipetakan sementara ke {drv}\\ (tanpa spasi) untuk kompilasi")
+        log(f"App folder temporarily mapped to {drv}\\ (no spaces) for compiling")
         b_env, b_py, b_repo = drv + "\\.conda_gs", drv + "\\.conda_gs\\python.exe", drv + "\\third_party\\gaussian-splatting"
     else:
-        log("subst tidak tersedia - kompilasi memakai path asli")
+        log("subst not available - compiling from the original path")
         b_env, b_py, b_repo = ENV, ENV_PY, REPO
     try:
         rc_all = build_all(vcvars, cuda_home, allow_unsup, arch, b_env, b_py, b_repo, built)
     finally:
         if drv:
             subprocess.run(["subst", drv, "/D"], capture_output=True)
-            log(f"Pemetaan {drv} dilepas")
+            log(f"Mapping {drv} released")
     if rc_all != 0:
         return rc_all
     return verify(env, commit, torch_v, tag, arch, built)
@@ -183,13 +183,13 @@ def build_all(vcvars, cuda_home, allow_unsup, arch, ENV, ENV_PY, REPO, built):
     for sub in ("diff-gaussian-rasterization", "simple-knn", "fused-ssim"):
         path = os.path.join(REPO, "submodules", sub)
         if not os.path.isdir(path):
-            log(f"  (submodule {sub} tidak ada di commit ini - dilewati)")
+            log(f"  (submodule {sub} not in this commit - skipped)")
             continue
         if subprocess.run([ENV_PY, "-c", f"import torch, {IMPORT_NAME[sub]}"], capture_output=True).returncode == 0:
-            log(f"  {sub}: sudah terkompilasi - dilewati")
+            log(f"  {sub}: already compiled - skipped")
             built[sub] = True
             continue
-        log(f"  Kompilasi {sub} ...")
+        log(f"  Compiling {sub} ...")
         nvflags = "-allow-unsupported-compiler -D_ALLOW_COMPILER_AND_STL_VERSION_MISMATCH"
         flags = f'set "NVCC_APPEND_FLAGS={nvflags}" && ' if allow_unsup else ""
         # cmd.exe pitfalls handled here:
@@ -205,13 +205,13 @@ def build_all(vcvars, cuda_home, allow_unsup, arch, ENV, ENV_PY, REPO, built):
         # passed as one raw string: /S makes cmd strip only the outer quotes and keep the inner ones
         rc = stream('cmd /V:ON /S /C "' + line + '"')
         if rc != 0 and not allow_unsup:
-            log(f"  Kompilasi {sub} gagal, mencoba lagi dengan -allow-unsupported-compiler ...")
+            log(f"  Compiling {sub} failed, retrying with -allow-unsupported-compiler ...")
             line2 = line.replace('set "TORCH_CUDA_ARCH_LIST',
                                  f'set "NVCC_APPEND_FLAGS={nvflags}" && set "TORCH_CUDA_ARCH_LIST')
             rc = stream('cmd /V:ON /S /C "' + line2 + '"')
         built[sub] = rc == 0
         if rc != 0:
-            log(f"GAGAL kompilasi {sub}. Lihat {LOG}.")
+            log(f"FAILED to compile {sub}. See {LOG}.")
             return 7
     return 0
 
@@ -226,7 +226,7 @@ def verify(env, commit, torch_v, tag, arch, built):
     json.dump({"ok": ok, "python": ENV_PY, "repo": REPO, "commit": commit, "torch": torch_v, "index": tag,
                "nvcc": env["nvcc_version"], "arch": arch, "built": built,
                "verify": vr.stdout.strip()}, open(os.path.join(RUNTIME, "gs_env.json"), "w"), indent=2)
-    log("SETUP SELESAI - Gaussian Splatting siap dipakai GeoSplat" if ok else f"Verifikasi GAGAL - lihat {LOG}")
+    log("SETUP COMPLETE - Gaussian Splatting is ready for GeoSplat" if ok else f"Verification FAILED - see {LOG}")
     return 0 if ok else 8
 
 

@@ -82,7 +82,7 @@ env["ready"] = ready
 os.makedirs(os.path.dirname(OUT), exist_ok=True)
 json.dump(env, open(OUT, "w"), indent=2)
 print(json.dumps(env, indent=2))
-print("\nRINGKASAN:")
+print("\nSUMMARY:")
 for k, v in ready.items():
     print(f"  {'[OK]     ' if v else '[MISSING]'} {k}")
-print(f"\nDisimpan ke {OUT}")
+print(f"\nSaved to {OUT}")

@@ -8,7 +8,7 @@
   Imagery: Google Map Tiles API (2D satellite tiles, attribution shown) or Esri World Imagery (fallback).
   See docs/METHODS.md section 9 and THIRD_PARTY_NOTICES.md.
 -->
-<html lang="id">
+<html lang="en">
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
@@ -44,7 +44,7 @@
   #measure .val { background:#1b1b1b; border-radius:5px; padding:4px 10px; font-family:Consolas, monospace; min-width:110px; text-align:right; }
   #measure button { background:#3a3a3a; color:var(--ink); border:0; border-radius:5px; padding:4px 10px; cursor:pointer; }
   #status { position:fixed; left:0; right:0; bottom:0; height:30px; background:#1a1a1a; display:flex; align-items:center; gap:22px; padding:0 16px; font-size:12px; color:var(--muted); }
-  #status b { color:var(--ink); font-weight:500; } #status .r { margin-left:auto; }
+  #status b { color:var(--ink); font-weight:500; } #status .r { margin-left:auto; } #status .credit { opacity:.75; white-space:nowrap; }
   #compass { right:18px; top:16px; width:54px; height:54px; border-radius:50%; display:grid; place-items:center; cursor:pointer; }
   #compass svg { width:42px; height:42px; }
   #toast { position:fixed; left:50%; top:16px; transform:translateX(-50%); background:var(--panel); border-left:3px solid var(--acc); border-radius:8px; padding:9px 14px; max-width:620px; display:none; box-shadow:0 4px 18px rgba(0,0,0,.45); }
@@ -57,7 +57,7 @@
 </head>
 <body>
 <canvas id="view"></canvas>
-<div id="loading">Memuat…</div>
+<div id="loading">Loading…</div>
 
 <div class="panel" id="menu"><span class="dot"></span>GeoSplat<span class="name" id="sceneName"></span></div>
 
@@ -65,29 +65,29 @@
   <div class="hdr" data-toggle="layers"><svg viewBox="0 0 24 24" fill="none" stroke-width="2"><path d="M4 6h16M4 12h16M4 18h16"/></svg>Scene<svg class="chev" viewBox="0 0 24 24" fill="none" stroke-width="2"><path d="M6 9l6 6 6-6"/></svg></div>
   <div id="layers">
     <div class="item"><span class="sw" style="background:#ff6a13"></span><span class="lbl">gaussians_enu.ply<div class="sub" id="nSplat"></div></span><button class="eye" data-layer="splat"></button></div>
-    <div class="item"><span class="sw" style="background:#3f8f4f"></span><span class="lbl">Satelit<div class="sub" id="imgSrc">–</div></span><button class="eye" data-layer="sat"></button></div>
-    <div class="item" style="padding-top:2px"><span class="sw" style="visibility:hidden"></span><span class="lbl sub">Opacity satelit</span><input type="range" id="satOp" min="0" max="100" value="100" style="width:110px"></div>
-    <div class="item"><span class="sw" style="background:#00d5ff"></span><span class="lbl">Kamera SfM (georef)</span><button class="eye" data-layer="cams"></button></div>
-    <div class="item"><span class="sw" style="background:#ffd23f"></span><span class="lbl">Lintasan GNSS DJI</span><button class="eye off" data-layer="gnss"></button></div>
-    <div id="keyform"><div class="sub" style="margin-bottom:6px">Google API key (Map Tiles API)</div><input id="keyIn" type="password" placeholder="AIza..."><button id="keyBtn">Pakai key</button></div>
+    <div class="item"><span class="sw" style="background:#3f8f4f"></span><span class="lbl">Satellite imagery<div class="sub" id="imgSrc">–</div></span><button class="eye" data-layer="sat"></button></div>
+    <div class="item" style="padding-top:2px"><span class="sw" style="visibility:hidden"></span><span class="lbl sub">Imagery opacity</span><input type="range" id="satOp" min="0" max="100" value="100" style="width:110px"></div>
+    <div class="item"><span class="sw" style="background:#00d5ff"></span><span class="lbl">SfM cameras (georeferenced)</span><button class="eye" data-layer="cams"></button></div>
+    <div class="item"><span class="sw" style="background:#ffd23f"></span><span class="lbl">DJI GNSS track</span><button class="eye off" data-layer="gnss"></button></div>
+    <div id="keyform"><div class="sub" style="margin-bottom:6px">Google API key (Map Tiles API)</div><input id="keyIn" type="password" placeholder="AIza..."><button id="keyBtn">Use key</button></div>
   </div>
-  <div class="hdr" data-toggle="geo"><svg viewBox="0 0 24 24" fill="none" stroke-width="2"><circle cx="12" cy="12" r="9"/><path d="M3 12h18M12 3c3 3 3 15 0 18M12 3c-3 3-3 15 0 18"/></svg>Georeferensi<svg class="chev" viewBox="0 0 24 24" fill="none" stroke-width="2"><path d="M6 9l6 6 6-6"/></svg></div>
+  <div class="hdr" data-toggle="geo"><svg viewBox="0 0 24 24" fill="none" stroke-width="2"><circle cx="12" cy="12" r="9"/><path d="M3 12h18M12 3c3 3 3 15 0 18M12 3c-3 3-3 15 0 18"/></svg>Georeferencing<svg class="chev" viewBox="0 0 24 24" fill="none" stroke-width="2"><path d="M6 9l6 6 6-6"/></svg></div>
   <div id="geo" class="kv"></div>
 </div>
 
-<div class="panel" id="compass" title="Utara ke atas"><svg viewBox="-21 -21 42 42"><g id="needle"><path d="M0,-17 L5,0 L0,-3 L-5,0 Z" fill="#ff6a13"/><path d="M0,17 L5,0 L0,3 L-5,0 Z" fill="#777"/></g></svg></div>
+<div class="panel" id="compass" title="North up"><svg viewBox="-21 -21 42 42"><g id="needle"><path d="M0,-17 L5,0 L0,-3 L-5,0 Z" fill="#ff6a13"/><path d="M0,17 L5,0 L0,3 L-5,0 Z" fill="#777"/></g></svg></div>
 
-<div class="panel" id="measure"><span>Klik 2 titik untuk mengukur</span><span class="sub">Panjang</span><span class="val" id="mval">–</span><button id="mclear">Clear</button></div>
+<div class="panel" id="measure"><span>Click two points to measure</span><span class="sub">Length</span><span class="val" id="mval">–</span><button id="mclear">Clear</button></div>
 
 <div class="panel" id="toolbar">
-  <button id="tReset" title="Reset tampilan"><svg viewBox="0 0 24 24"><path d="M4 4v6h6"/><path d="M20 12a8 8 0 1 1-2.3-5.7L20 9"/></svg></button>
-  <button id="tTop" title="Tampak atas (bandingkan dengan satelit)"><svg viewBox="0 0 24 24"><rect x="4" y="4" width="16" height="16" rx="2"/><circle cx="12" cy="12" r="2.5"/></svg></button>
-  <button id="tOrbit" title="Tampak miring 3D"><svg viewBox="0 0 24 24"><path d="M12 3l8 4.5v9L12 21l-8-4.5v-9z"/><path d="M12 12l8-4.5M12 12v9M12 12L4 7.5"/></svg></button>
+  <button id="tReset" title="Reset view"><svg viewBox="0 0 24 24"><path d="M4 4v6h6"/><path d="M20 12a8 8 0 1 1-2.3-5.7L20 9"/></svg></button>
+  <button id="tTop" title="Top view (compare with the satellite image)"><svg viewBox="0 0 24 24"><rect x="4" y="4" width="16" height="16" rx="2"/><circle cx="12" cy="12" r="2.5"/></svg></button>
+  <button id="tOrbit" title="Oblique 3D view"><svg viewBox="0 0 24 24"><path d="M12 3l8 4.5v9L12 21l-8-4.5v-9z"/><path d="M12 12l8-4.5M12 12v9M12 12L4 7.5"/></svg></button>
   <span class="sep"></span>
-  <button id="tMeasure" title="Ukur jarak (bidang tanah)"><svg viewBox="0 0 24 24"><path d="M3 17L17 3l4 4L7 21z"/><path d="M7 13l2 2M10 10l2 2M13 7l2 2"/></svg></button>
-  <button id="tBlink" title="Kedip splat on/off"><svg viewBox="0 0 24 24"><path d="M2 12s4-7 10-7 10 7 10 7-4 7-10 7S2 12 2 12z"/><circle cx="12" cy="12" r="3"/></svg></button>
+  <button id="tMeasure" title="Measure distance (horizontal)"><svg viewBox="0 0 24 24"><path d="M3 17L17 3l4 4L7 21z"/><path d="M7 13l2 2M10 10l2 2M13 7l2 2"/></svg></button>
+  <button id="tBlink" title="Blink splats on/off"><svg viewBox="0 0 24 24"><path d="M2 12s4-7 10-7 10 7 10 7-4 7-10 7S2 12 2 12z"/><circle cx="12" cy="12" r="3"/></svg></button>
   <span class="sep"></span>
-  <button id="tShot" title="Simpan screenshot PNG"><svg viewBox="0 0 24 24"><path d="M4 8h3l2-3h6l2 3h3v11H4z"/><circle cx="12" cy="13" r="3.5"/></svg></button>
+  <button id="tShot" title="Save PNG screenshot"><svg viewBox="0 0 24 24"><path d="M4 8h3l2-3h6l2 3h3v11H4z"/><circle cx="12" cy="13" r="3.5"/></svg></button>
 </div>
 
 <div id="toast"></div>
@@ -95,8 +95,9 @@
 <div id="status">
   <span>Splats <b id="sN">–</b></span>
   <span>Imagery <b id="sImg">–</b></span>
-  <span>Kursor <b id="sCur">–</b></span>
+  <span>Cursor <b id="sCur">–</b></span>
   <span class="r" id="sAttr"></span>
+  <span class="credit" title="Wijaya, H. M., Handayani, H. H., Hariyanto, T., &amp; Harintaka. GeoSplat. Department of Geomatics Engineering, ITS Surabaya &amp; UGM Yogyakarta, Indonesia">GeoSplat · © H. M. Wijaya, H. H. Handayani, T. Hariyanto, Harintaka · ITS &amp; UGM</span>
 </div>
 
 <script src="config.local.js" onerror="void 0"></script>
@@ -200,7 +201,7 @@ class SplatRenderer {
   constructor(){ this.gl=null; this.ready=false; this.count=0; this.sortId=0; this.lastRow=null; this.onSorted=null; }
   init(gl, buffer){
     this.gl = gl;
-    if (!(gl instanceof WebGL2RenderingContext)) throw new Error("WebGL2 tidak tersedia pada konteks ini");
+    if (!(gl instanceof WebGL2RenderingContext)) throw new Error("WebGL2 is not available in this context");
     const sh = (t, s) => { const o=gl.createShader(t); gl.shaderSource(o,s); gl.compileShader(o);
       if(!gl.getShaderParameter(o,gl.COMPILE_STATUS)) throw new Error(gl.getShaderInfoLog(o)); return o; };
     const p = gl.createProgram(); gl.attachShader(p, sh(gl.VERTEX_SHADER, VS)); gl.attachShader(p, sh(gl.FRAGMENT_SHADER, FS));
@@ -341,7 +342,7 @@ const cv = $("view");
 const gl = cv.getContext("webgl2", {antialias:true, premultipliedAlpha:false, preserveDrawingBuffer:true});
 
 async function main(){
-  if (!gl) { $("loading").textContent = "WebGL2 tidak tersedia di browser ini."; return; }
+  if (!gl) { $("loading").textContent = "WebGL2 is not available in this browser."; return; }
   const meta = await (await fetch("meta.json")).json();
   const traj = await (await fetch("trajectory.json")).json();
   S.meta = meta; $("sceneName").textContent = meta.title.replace(/^GeoSplat\s*-\s*/,"");
@@ -356,7 +357,7 @@ async function main(){
   // splats
   const resp = await fetch(meta.splats.file); const total=+resp.headers.get("content-length")||meta.splats.count*32;
   const rd=resp.body.getReader(), buf=new Uint8Array(total); let got=0;
-  for(;;){ const {done,value}=await rd.read(); if(done) break; buf.set(value,got); got+=value.length; $("loading").textContent=`Memuat splat ${(100*got/total).toFixed(0)}%`; }
+  for(;;){ const {done,value}=await rd.read(); if(done) break; buf.set(value,got); got+=value.length; $("loading").textContent=`Loading splats ${(100*got/total).toFixed(0)}%`; }
   const R = new SplatRenderer(); R.init(gl, buf.buffer.slice(0, got-got%32)); S.R=R;
   R.onSorted = () => requestAnimationFrame(frame);
   $("nSplat").textContent = R.n.toLocaleString()+" splats"; $("sN").textContent = R.n.toLocaleString();
@@ -386,7 +387,7 @@ async function loadImagery(meta){
   if (key) {
     try {
       const r = await fetch(`https://tile.googleapis.com/v1/createSession?key=${encodeURIComponent(key)}`,
-        {method:"POST", headers:{"Content-Type":"application/json"}, body:JSON.stringify({mapType:"satellite", language:"id-ID", region:"ID"})});
+        {method:"POST", headers:{"Content-Type":"application/json"}, body:JSON.stringify({mapType:"satellite", language:(navigator.language||"en-US"), region:(((navigator.language||"en-US").split("-")[1])||"US").toUpperCase()})});
       const j = await r.json();
       if (!r.ok || !j.session) throw new Error(j.error?.message || ("HTTP "+r.status));
       mk = (z,x,y) => `https://tile.googleapis.com/v1/2dtiles/${z}/${x}/${y}?session=${j.session}&key=${encodeURIComponent(key)}`;
@@ -394,7 +395,7 @@ async function loadImagery(meta){
       try { const o=meta.overlay; const v = await (await fetch(`https://tile.googleapis.com/tile/v1/viewport?session=${j.session}&key=${encodeURIComponent(key)}&zoom=19&north=${o.north}&south=${o.south}&east=${o.east}&west=${o.west}`)).json();
             attr = "Imagery © Google" + (v.copyright ? ", " + v.copyright : ""); } catch { attr = "Imagery © Google"; }
     } catch (e) {
-      toast(`Google Map Tiles API menolak permintaan: <b>${e.message}</b><br>Aktifkan <a href="https://console.cloud.google.com/apis/library/tile.googleapis.com" target="_blank">Map Tiles API</a> untuk project key ini. Sementara memakai Esri World Imagery.`, 0);
+      toast(`Google Map Tiles API rejected the request: <b>${e.message}</b><br>Enable the <a href="https://console.cloud.google.com/apis/library/tile.googleapis.com" target="_blank">Map Tiles API</a> for this key's project. Using Esri World Imagery for now.`, 0);
     }
   } else {
     $("keyform").style.display = "block";
@@ -410,7 +411,7 @@ async function loadImagery(meta){
   }
   let ok=0, fail=0;
   await Promise.all(jobs.map(([z,x,y]) => S.img.addTile(z,x,y,mk(z,x,y), () => requestAnimationFrame(frame)).then(r => r?ok++:fail++)));
-  if (fail && src.startsWith("Google")) toast(`${fail} dari ${jobs.length} tile Google gagal dimuat (zoom tinggi mungkin tidak tersedia di lokasi ini).`, 6000);
+  if (fail && src.startsWith("Google")) toast(`${fail} of ${jobs.length} Google tiles failed to load (high zoom may not be available at this location).`, 6000);
   $("sImg").textContent = `${src} (${ok} tile)`;
 }
 

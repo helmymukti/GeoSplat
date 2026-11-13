@@ -10,11 +10,13 @@ import sys
 import time
 import webbrowser
 
+from . import __version__, about
 from .pipeline import STAGES, Job, Pipeline, check_prerequisites, load_settings, serve_viewer
 
 
 def main(argv=None):
     ap = argparse.ArgumentParser(prog="geosplat", description="DJI video -> georeferenced 3D Gaussian Splatting")
+    ap.add_argument("--version", action="version", version=f"GeoSplat {__version__}\n" + about.credit_line())
     ap.add_argument("video")
     ap.add_argument("--srt", default=None)
     ap.add_argument("--project", default=None)
@@ -27,6 +29,7 @@ def main(argv=None):
     ap.add_argument("--checkpoints", default=None,
                     help="RTK checkpoint CSV (id,E,N,h or id,lat,lon,h; ellipsoidal h) for the vertical correction")
     a = ap.parse_args(argv)
+    print(about.banner() + "\n")
     print("Prerequisites:", check_prerequisites())
     job = Job(a.video, a.srt, a.project, a.fps, a.profile, a.iterations, load_settings().get("gmaps_key", ""),
               a.redo, a.stages.split(","), a.checkpoints)

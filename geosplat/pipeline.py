@@ -1,7 +1,7 @@
 """
 GeoSplat pipeline orchestrator (used by the GUI and the CLI).
 
-Runs the five stages as separate processes (isolation, cancellable, resumable):
+Runs the six stages as separate processes (isolation, cancellable, resumable):
 
   1 telemetry  scripts/stage1_telemetry.py   probe video, decode SRT / embedded DJI track, extract frames, sync
   2 colmap     scripts/stage2_colmap.py      GNSS-guided matching + incremental SfM (COLMAP)
@@ -32,8 +32,9 @@ RUNTIME = os.path.join(ROOT, "runtime")
 SETTINGS = os.path.join(RUNTIME, "settings.json")
 VIEWER_PORT = 8765
 
-STAGES = [("telemetry", "Telemetri & ekstraksi frame"), ("colmap", "COLMAP Structure-from-Motion"),
-          ("georef", "Georeferensi GNSS"), ("gaussians", "Gaussian Splatting"), ("web", "Viewer satelit & ekspor")]
+STAGES = [("telemetry", "Telemetry & frame extraction"), ("colmap", "COLMAP Structure-from-Motion"),
+          ("georef", "GNSS georeferencing"), ("gaussians", "3D Gaussian Splatting"),
+          ("web", "Satellite viewer & exports"), ("vcorr", "Height datum check / RTK correction")]
 
 
 # ----------------------------------------------------------------------------- settings / tools
@@ -162,7 +163,7 @@ class Pipeline:
         if key == "gaussians":
             g = gs_env()
             if not g:
-                raise RuntimeError("Lingkungan Gaussian Splatting belum terpasang. Klik 'Siapkan GPU' dulu.")
+                raise RuntimeError("Gaussian Splatting environment not installed. Click 'Set up GPU…' first.")
             return [g["python"], s("stage4_gaussians.py"), "--project", j.project, "--profile", j.profile,
                     "--iterations", str(j.iterations), "--gs-env", os.path.join(RUNTIME, "gs_env.json")]
         if key == "web":
@@ -188,9 +189,12 @@ class Pipeline:
     def run(self) -> bool:
         j = self.job
         os.makedirs(os.path.join(j.project, "logs"), exist_ok=True)
+        from .about import provenance
         json.dump({"video": j.video, "srt": j.srt, "fps": j.fps, "profile": j.profile, "iterations": j.iterations,
-                   "started": time.strftime("%Y-%m-%d %H:%M:%S")},
-                  open(os.path.join(j.project, "logs", "job.json"), "w"), indent=2)
+                   "checkpoints": j.checkpoints, "stages": list(j.stages),
+                   "started": time.strftime("%Y-%m-%d %H:%M:%S"), "provenance": provenance()},
+                  open(os.path.join(j.project, "logs", "job.json"), "w", encoding="utf-8"), indent=2,
+                  ensure_ascii=False)
         env = child_env(j.gmaps_key)
         for key, label in STAGES:
             if key not in j.stages:
@@ -199,7 +203,7 @@ class Pipeline:
                 self.on_stage(key, "cancelled")
                 return False
             if os.path.exists(self.marker(key)) and not j.redo and not (key == "vcorr" and j.checkpoints):
-                self.on_stage(key, "skipped", "sudah selesai sebelumnya")
+                self.on_stage(key, "skipped", "completed earlier")
                 continue
             try:
                 cmd = self.command(key)
@@ -225,10 +229,10 @@ class Pipeline:
                 self.on_stage(key, "cancelled")
                 return False
             if rc != 0:
-                self.on_stage(key, "failed", f"exit {rc} - lihat {log_path}")
+                self.on_stage(key, "failed", f"exit code {rc} - see {log_path}")
                 return False
             open(self.marker(key), "w").write(json.dumps({"seconds": round(dt, 1), "finished": time.ctime()}))
-            self.on_stage(key, "done", f"{dt / 60:.1f} menit")
+            self.on_stage(key, "done", f"{dt / 60:.1f} min")
         return True
 
     def viewer_dir(self):

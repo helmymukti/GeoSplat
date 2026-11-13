@@ -131,7 +131,9 @@ def write_html(out_html, title, sections, images):
     img{width:100%;background:#fff;border-radius:6px}
     .warn{color:#ffcf70}.ok{color:#7fe0b0}
     """
-    body = [f"<header><h1>{html.escape(title)}</h1><div class='sub'>Generated locally by GeoSplat Phase 1 · "
+    from .about import credit_line
+    from . import __version__
+    body = [f"<header><h1>{html.escape(title)}</h1><div class='sub'>Generated locally by GeoSplat {__version__} · "
             f"no data left this computer</div></header><main>"]
     body.append("<div class='grid'>")
     for name, rows in sections:
@@ -139,7 +141,8 @@ def write_html(out_html, title, sections, images):
     body.append("</div>")
     for cap, p in images:
         body.append(f"<h2>{html.escape(cap)}</h2><div class='card'><img src='{_img(p)}'></div>")
-    body.append("</main>")
+    body.append(f"<footer style='padding:14px 32px;color:#6f84a3;font-size:12px'>{html.escape(credit_line())}"
+                "</footer></main>")
     open(out_html, "w", encoding="utf-8").write(
         f"<!DOCTYPE html><html><head><meta charset='utf-8'><title>{html.escape(title)}</title>"
         f"<style>{css}</style></head><body>{''.join(body)}</body></html>")

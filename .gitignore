@@ -16,3 +16,4 @@ settings.json
 *.SRT
 *.srt
 *.ply
+.pytest_cache/
