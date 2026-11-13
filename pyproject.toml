@@ -1,6 +1,6 @@
 [project]
 name = "geosplat"
-version = "0.1.0"
+version = "0.2.0"
 description = "Local DJI drone video to georeferenced 3D Gaussian Splatting (COLMAP + Graphdeco 3DGS + GNSS)"
 readme = "README.md"
 license = { text = "MIT" }

@@ -81,7 +81,7 @@ class DropZone(QFrame):
         lay.addWidget(b, alignment=Qt.AlignCenter)
 
     def pick(self):
-        files, _ = QFileDialog.getOpenFileNames(self, "Pilih video DJI dan SRT", "", "DJI video/telemetri (*.mp4 *.MP4 *.mov *.MOV *.srt *.SRT)")
+        files, _ = QFileDialog.getOpenFileNames(self, "Pilih video DJI, SRT, dan (opsional) CSV check point", "", "DJI video/telemetri/check point (*.mp4 *.MP4 *.mov *.MOV *.srt *.SRT *.csv *.CSV)")
         if files:
             self.on_files(files)
 
@@ -110,6 +110,7 @@ class Main(QMainWindow):
         self.resize(1040, 820)
         self.settings = load_settings()
         self.video = self.srt = None
+        self.checkpoints = None
         self.project = None
         self.thread = self.worker = None
         self.t_start = None
@@ -183,6 +184,17 @@ class Main(QMainWindow):
         k.setStyleSheet("color:#9a9a9a;")
         g.addWidget(k, 4, 0)
         g.addWidget(self.key, 4, 1, 1, 6)
+        k = QLabel("Check point RTK")
+        k.setStyleSheet("color:#9a9a9a;")
+        k.setToolTip("Opsional: CSV check point GNSS/RTK (id,E,N,h atau id,lat,lon,h; tinggi ellipsoid). "
+                     "Dipakai tahap 6 untuk mengoreksi datum tinggi model.")
+        self.lc = QLabel("– (opsional; tanpa ini tinggi absolut model tidak dikoreksi)")
+        self.lc.setTextInteractionFlags(Qt.TextSelectableByMouse)
+        bcp = QPushButton("Pilih CSV…")
+        bcp.clicked.connect(self.pick_checkpoints)
+        g.addWidget(k, 5, 0)
+        g.addWidget(self.lc, 5, 1, 1, 5)
+        g.addWidget(bcp, 5, 6)
         v.addWidget(card)
 
         stc = QFrame()
@@ -255,6 +267,9 @@ class Main(QMainWindow):
     def set_files(self, files):
         vids = [f for f in files if os.path.splitext(f)[1].lower() in (".mp4", ".mov")]
         srts = [f for f in files if os.path.splitext(f)[1].lower() == ".srt"]
+        csvs = [f for f in files if os.path.splitext(f)[1].lower() == ".csv"]
+        if csvs:
+            self.set_checkpoints(csvs[0])
         if vids:
             self.video = os.path.abspath(vids[0])
             self.srt = os.path.abspath(srts[0]) if srts else find_srt(self.video)
@@ -269,6 +284,16 @@ class Main(QMainWindow):
                 done = os.path.exists(os.path.join(self.project, "logs", f"_stage_{key}.done"))
                 self.set_stage(key, "done" if done else "pending", "selesai sebelumnya" if done else "")
         self.update_buttons()
+
+    def set_checkpoints(self, path):
+        self.checkpoints = os.path.abspath(path) if path else None
+        self.lc.setText(self.checkpoints or "– (opsional; tanpa ini tinggi absolut model tidak dikoreksi)")
+
+    def pick_checkpoints(self):
+        f, _ = QFileDialog.getOpenFileName(self, "CSV check point RTK", os.path.dirname(self.video or ROOT),
+                                           "CSV (*.csv)")
+        if f:
+            self.set_checkpoints(f)
 
     def pick_project(self):
         d = QFileDialog.getExistingDirectory(self, "Folder output", os.path.dirname(self.project or ROOT))
@@ -317,9 +342,9 @@ class Main(QMainWindow):
         save_settings(self.settings)
         stages = [k for k, _ in STAGES]
         if not self.prereq["gaussian_splatting"]:
-            stages = ["telemetry", "colmap", "georef"]
+            stages = ["telemetry", "colmap", "georef", "vcorr"]
         job = Job(self.video, self.srt, self.project, self.fps.value(), self.prof.currentText(), self.it.value(),
-                  self.key.text().strip(), False, stages)
+                  self.key.text().strip(), False, stages, self.checkpoints)
         self.logw.clear()
         self.bar.setValue(0)
         for key, _ in STAGES:

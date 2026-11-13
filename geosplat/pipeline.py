@@ -8,6 +8,7 @@ Runs the five stages as separate processes (isolation, cancellable, resumable):
   3 georef     scripts/stage3_georef.py      robust Sim3 to GNSS, check points, CRS chain, ENU model
   4 gaussians  scripts/stage4_gaussians.py   Graphdeco 3D Gaussian Splatting + georeferenced exports
   5 web        scripts/stage5_web.py         satellite viewer assets (index.html, splat, orthophoto)
+  6 vcorr      scripts/stage6_vcorr.py       height-datum check; with RTK checkpoints: vertical correction (optional)
 
 A stage that finished successfully writes <project>/logs/_stage_<key>.done ; re-running the same project
 skips finished stages (resume). Nothing is ever deleted.
@@ -126,12 +127,15 @@ class Job:
     gmaps_key: str = ""
     redo: bool = False
     stages: list = field(default_factory=lambda: [k for k, _ in STAGES])
+    checkpoints: str | None = None          # optional RTK checkpoint CSV for stage 6
 
     def __post_init__(self):
         self.video = os.path.abspath(self.video)
         if self.srt is None:
             self.srt = find_srt(self.video)
         self.project = os.path.abspath(self.project or default_project(self.video))
+        if self.checkpoints:
+            self.checkpoints = os.path.abspath(self.checkpoints)
 
 
 class Pipeline:
@@ -163,6 +167,9 @@ class Pipeline:
                     "--iterations", str(j.iterations), "--gs-env", os.path.join(RUNTIME, "gs_env.json")]
         if key == "web":
             return [py, s("stage5_web.py"), "--project", j.project]
+        if key == "vcorr":
+            return [py, s("stage6_vcorr.py"), "--project", j.project] + (
+                ["--checkpoints", j.checkpoints] if j.checkpoints else [])
         raise KeyError(key)
 
     def marker(self, key):
@@ -191,7 +198,7 @@ class Pipeline:
             if self._stop:
                 self.on_stage(key, "cancelled")
                 return False
-            if os.path.exists(self.marker(key)) and not j.redo:
+            if os.path.exists(self.marker(key)) and not j.redo and not (key == "vcorr" and j.checkpoints):
                 self.on_stage(key, "skipped", "sudah selesai sebelumnya")
                 continue
             try:

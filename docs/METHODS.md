@@ -112,8 +112,42 @@ The WebGL2 viewer renders each Gaussian as a screen-space ellipse. The projected
 
 ---
 
+## 10. Vertical datum correction from GNSS checkpoints (stage 6, optional)
+**Why.** On DJI aircraft the per-frame `abs_alt` equals a home-point altitude fixed at take-off plus `rel_alt`
+(stage 6 checks this: `abs_alt − rel_alt` is constant to millimetres in the ITS data set). An error in the
+home-point altitude therefore shifts the whole model vertically by one constant. The Sim3 of §6 absorbs such a
+shift, so the internal residuals cannot reveal it. In the ITS Research Center data set the offset was +25.42 m.
+
+**Checkpoint harmonisation (optional).** RTK measures the baseline from the reference coordinate the base
+broadcasts. If that differs from the station's official datum coordinate, every rover coordinate is re-referenced
+in ECEF: **X**ᵣ = **X**ᵣ,RTK − **X**_base,used + **X**_base,official. Coordinates can be moved between epochs with a
+constant station velocity: **X**(t₂) = **X**(t₁) + **V**(t₂ − t₁) [Altamimi et al. 2011 for the ITRF2008 frame]. Both steps are read from a JSON file next to the checkpoint CSV, or from command-line options.
+
+**Model surface height.** For each checkpoint, Gaussians within 2.5 m horizontally (4 m if fewer than five) with
+opacity σ(o) > 0.3 are selected. The surface height is the mode of their opacity-weighted Gaussian kernel density
+(bandwidth 0.15 m), which suppresses floaters. Without Gaussians the sparse SfM points are used with equal weights.
+
+**Offset and accuracy.** ΔZᵢ = Z_model − h_checkpoint. Points are classed as non-vegetated (NVA) or vegetated (VVA)
+by the user; unlabelled points are NVA candidates. Points more than 3 m above the provisional (median) offset are
+excluded as canopy tops, points without model support as "no coverage". The offset *b* is the mean ΔZ of the NVA
+class. Following the ASPRS Positional Accuracy Standards, Edition 2 [ASPRS 2024], the report gives mean error,
+standard deviation, RMSE without correction, and RMSE after correction. The NVA RMSE uses leave-one-out residuals
+eᵢ = ΔZᵢ − mean(ΔZⱼ, j ≠ i), so no point is tested against an offset fitted to itself; VVA points are corrected
+with the NVA offset. The checkpoint survey error is added as RMSE_V = √(RMSE_data² + RMSE_survey²) when VRMS values
+are given. Robust measures (median, NMAD = 1.4826 · median|ΔZ − median ΔZ|) follow [Höhle & Höhle 2009]; 95 %
+intervals come from 10 000 bootstrap resamples. A datum-free check compares height differences of all NVA pairs,
+eᵢⱼ = (Zᵢ − Zⱼ) − (hᵢ − hⱼ), in which any constant offset cancels. With fewer than 30 NVA checkpoints the result is
+labelled a limited assessment.
+
+**Output.** `10_Vertical_Correction/` receives height-corrected copies: UTM products (sparse points, camera centres,
+Gaussians) with *z* + (−*b*); local-ENU products with unchanged values and the origin height in the header changed to
+*h*₀ − *b*; camera trajectory (*h* and ECEF); CRS sidecar and viewer metadata. Horizontal coordinates are not
+changed. Originals are never modified.
+
 ## References
 
+* Altamimi, Z., Collilieux, X., & Métivier, L. (2011). ITRF2008: an improved solution of the international terrestrial reference frame. *Journal of Geodesy*, 85(8), 457–473.
+* ASPRS (2024). *ASPRS Positional Accuracy Standards for Digital Geospatial Data*, Edition 2, Version 2.0. American Society for Photogrammetry and Remote Sensing.
 * Bar-Itzhack, I. Y. (2000). New method for extracting the quaternion from a rotation matrix. *Journal of Guidance, Control, and Dynamics*, 23(6), 1085–1087.
 * Bowring, B. R. (1976). Transformation from spatial to geographical coordinates. *Survey Review*, 23(181), 323–327.
 * EPSG Geodetic Parameter Dataset. EPSG:3857 (WGS 84 / Pseudo-Mercator), EPSG:4326, EPSG:4978, EPSG:326xx/327xx (UTM).
@@ -123,6 +157,7 @@ The WebGL2 viewer renders each Gaussian as a screen-space ellipse. The projected
 * Google. Map Tiles API — 2D Tiles. https://developers.google.com/maps/documentation/tile
 * Green, R. (2003). Spherical Harmonic Lighting: The Gritty Details. *Game Developers Conference*.
 * Harvey, P. *ExifTool* — DJI tags (protobuf `dvtm_*`). https://exiftool.org/TagNames/DJI.html
+* Höhle, J., & Höhle, M. (2009). Accuracy assessment of digital elevation models by means of robust statistical methods. *ISPRS Journal of Photogrammetry and Remote Sensing*, 64(4), 398–406.
 * Ivanic, J., & Ruedenberg, K. (1996). Rotation matrices for real spherical harmonics. Direct determination by recursion. *Journal of Physical Chemistry*, 100(15), 6342–6347.
 * Karney, C. F. F. (2011). Transverse Mercator with an accuracy of a few nanometers. *Journal of Geodesy*, 85(8), 475–485.
 * Kerbl, B., Kopanas, G., Leimkühler, T., & Drettakis, G. (2023). 3D Gaussian Splatting for Real-Time Radiance Field Rendering. *ACM Transactions on Graphics*, 42(4), Article 139.

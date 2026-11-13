@@ -1,6 +1,7 @@
 """
 GeoSplat command line:  python -m geosplat.cli VIDEO.MP4 [--srt FILE.SRT] [--project DIR] [--fps 2]
                                                [--profile balanced|low|quality] [--iterations 30000] [--serve]
+                                               [--checkpoints RTK.csv]
 """
 from __future__ import annotations
 
@@ -23,11 +24,14 @@ def main(argv=None):
     ap.add_argument("--stages", default=",".join(k for k, _ in STAGES))
     ap.add_argument("--redo", action="store_true", help="re-run stages already marked done")
     ap.add_argument("--serve", action="store_true", help="open the satellite viewer when finished")
+    ap.add_argument("--checkpoints", default=None,
+                    help="RTK checkpoint CSV (id,E,N,h or id,lat,lon,h; ellipsoidal h) for the vertical correction")
     a = ap.parse_args(argv)
     print("Prerequisites:", check_prerequisites())
     job = Job(a.video, a.srt, a.project, a.fps, a.profile, a.iterations, load_settings().get("gmaps_key", ""),
-              a.redo, a.stages.split(","))
+              a.redo, a.stages.split(","), a.checkpoints)
     print(f"Video   : {job.video}\nSRT     : {job.srt or '(none - embedded telemetry)'}\nProject : {job.project}")
+    print(f"Checkpts: {job.checkpoints or '(none - height datum not corrected)'}")
     pl = Pipeline(job, on_log=print, on_stage=lambda k, s, i="": print(f"[{k}] {s} {i}"))
     ok = pl.run()
     if ok and a.serve:

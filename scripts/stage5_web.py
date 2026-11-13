@@ -212,7 +212,7 @@ def main():
         "height_note": "Google base map is flat (ground = altitude 0). The 3D view places the estimated ground "
                        "level of the model at altitude 0; horizontal georeferencing is unchanged.",
         "metrics": crs.get("image_metrics", {}),
-        "epsg_utm": 32749,
+        "epsg_utm": int(tf["conventions"]["utm"].split("EPSG:")[1].rstrip(")")),
     }
     json.dump(meta, open(os.path.join(W, "meta.json"), "w"), indent=2)
     # viewer page + local key file (key comes from the app settings via environment, never from the repo)

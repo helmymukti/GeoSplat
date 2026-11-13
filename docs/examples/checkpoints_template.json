@@ -1,0 +1,8 @@
+{
+  "note": "Optional. Same file name as the CSV. Remove the keys you do not need. Values here are placeholders.",
+  "ntrip_base_used": [-2443857.719, 5835257.946, -808826.478],
+  "ntrip_base_official": [-2443857.505, 5835258.077, -808826.379],
+  "velocity": [-0.024, -0.014, -0.011],
+  "epoch_from": 2012.0,
+  "epoch_to": "video"
+}

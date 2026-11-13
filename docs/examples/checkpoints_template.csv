@@ -1,0 +1,4 @@
+id,E,N,h,class,vrms,desc
+1,500000.000,9000000.000,30.000,NVA,0.020,open road surface
+2,500050.000,9000040.000,30.500,VVA,0.025,path under partial tree cover
+3,500120.000,9000010.000,30.200,,0.020,unlabelled (treated as NVA candidate)

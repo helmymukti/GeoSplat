@@ -70,16 +70,26 @@ Without the GPU part, stages 1–3 (telemetry, SfM, georeferencing) still run.
              gaussians_crs.json, camera_trajectory.csv/.geojson, gs_orthophoto_wgs84.png(+.pgw/.prj),
              web/ (satellite viewer)
 09_Reports/  phase reports (txt/html), figures
+10_Vertical_Correction/  vcorr_report.json (always: altitude-reference check); with checkpoints also
+             checkpoints_dz.csv, README.txt and *_hcorr copies of the georeferenced products
 ```
 
 ## Accuracy statement
-GeoSplat reports the **relative** agreement between SfM and the DJI GNSS track: residuals, a 5-fold check-point RMSE, and a time-offset scan. Without RTK or ground control points, the absolute position inherits the GNSS error (typically metre level). DJI's `abs_alt` has no documented vertical datum, so check heights against a known point before using them for measurement.
+GeoSplat reports the **relative** agreement between SfM and the DJI GNSS track: residuals, a 5-fold check-point RMSE, and a time-offset scan. Without RTK or ground control points, the absolute position inherits the GNSS error (typically metre level). DJI's `abs_alt` is a home-point altitude plus the relative altitude and has no documented vertical datum; a wrong home point shifts the whole model vertically (25.4 m in our test data). Provide GNSS/RTK checkpoints to fix the height datum (below).
+
+## Vertical correction with RTK checkpoints (optional, stage 6)
+Drop a checkpoint CSV together with the video in the app (or `--checkpoints cp.csv` on the command line). Columns (case-insensitive): `id, E, N, h` in the project's UTM zone **or** `id, lat, lon, h`; heights must be **ellipsoidal**. Optional: `class` (`NVA` open ground, `VVA` vegetated, `EXCLUDE`), `desc`, `vrms`.
+
+```
+python scripts\stage6_vcorr.py --project D:\Flight_GeoSplat --checkpoints cp.csv
+```
+GeoSplat extracts the model surface height at each point, estimates the offset from the NVA points, reports ASPRS Ed. 2 statistics (leave-one-out RMSE, NMAD, bootstrap intervals, pairwise height differences) and writes corrected copies to `10_Vertical_Correction\`. If your RTK base broadcast a coordinate different from its official one, or the survey epoch differs from the flight, put these settings in a JSON file with the same name next to the CSV (`cp.json` for `cp.csv`); the app then applies them in the same run. Templates: `docs/examples/checkpoints_template.csv` and `.json`. On the command line the same options are `--ntrip-base-used X,Y,Z --ntrip-base-official X,Y,Z --velocity vx,vy,vz --epoch-from 2012.0` (see `docs/METHODS.md` §10). Only heights are corrected.
 
 ## Repository layout
 ```
 GeoSplat.bat            one-click launcher (first run = setup)
 geosplat/               library: geodesy, telemetry, sync, Sim3, georef, Gaussians, pipeline, GUI, CLI
-scripts/stage1..5_*.py  pipeline stages (each runnable on its own)
+scripts/stage1..6_*.py  pipeline stages (each runnable on its own; 6 = optional vertical correction)
 setup/                  install.bat, bootstrap_tools.py, install_gaussian_splatting.py, GPU toolchain check
 web/viewer.html         satellite Gaussian viewer (WebGL2)
 docs/METHODS.md         methods + references
@@ -113,5 +123,7 @@ GeoSplat mengubah video drone DJI menjadi model 3D Gaussian Splatting yang terge
 2. Klik **Siapkan GPU…** (cukup sekali).
 3. Seret file video (dan SRT, kalau ada) ke jendela aplikasi.
 4. Klik **Mulai**.
+
+Opsional: masukkan juga CSV check point RTK (tombol **Pilih CSV…** atau seret bersama video). Tahap 6 akan mengoreksi datum tinggi model dan menulis hasilnya ke `10_Vertical_Correction\`. Tanpa check point, tinggi absolut model **tidak** bisa dipercaya karena `abs_alt` DJI bergantung pada tinggi home point saat take-off.
 
 Setelah selesai, viewer satelit terbuka otomatis. Penjelasan metode dan daftar sitasinya ada di `docs/METHODS.md`.
